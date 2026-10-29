@@ -230,7 +230,7 @@ $('import').onchange = async e => {
 };
 
 // ------------------------------------------------------------------ render options
-const TOGGLES = ['topHud', 'playerPanel', 'courtMap', 'shuttle', 'showIds'];
+const TOGGLES = ['tags', 'topHud', 'playerPanel', 'courtMap', 'shuttle', 'showIds'];
 function syncControls() {
   for (const k of TOGGLES) $('r-' + k).checked = !!state.cfg.render[k];
   $('model').value = state.cfg.model.file;
@@ -358,19 +358,21 @@ async function getShuttle(statusId) {
 }
 
 // ------------------------------------------------------------------ score review (pipeline pauses here)
-const BY = { serve: 'rv.by.serve', land: 'rv.by.land', last: 'rv.by.last' };
+const BY = { box: 'rv.by.box', serve: 'rv.by.serve', land: 'rv.by.land', last: 'rv.by.last' };
 function reviewScore({ an, auto, ctx, start, time }) {
   const winners = auto.map(a => a.winner), extras = [];
   const box = $('review'), list = $('review-rows');
   let sel = -1;
-  // click a rally row → play it (1 s before the serve to 1.5 s after the end) with the analysed shuttle drawn on top
+  // click a rally row → play it with the analysed shuttle drawn on top
   const fps = state.vid.fps, last = an.pos.length - 1, out = $('out');
   const player = new ClipPlayer(state.vid.file, out, out.parentElement);
   out.onclick = () => player.toggle();
   const play = i => {
     sel = i; draw();
     const r = an.rallies[i], hits = new Set(r.hits.map(h => h.frame)), u = out.height / 720;
-    player.play(time(Math.max(0, r.start - fps)), time(Math.min(last, r.end + Math.round(1.5 * fps))), (g, mt) => {
+    // from 1 s before the serve to when the players line up for the next serve (or 1.5 s after the end)
+    const stop = r.limit != null ? Math.max(r.end, r.limit) : r.end + Math.round(1.5 * fps);
+    player.play(time(Math.max(0, r.start - fps)), time(Math.min(last, stop)), (g, mt) => {
       const f = Math.round((mt - time(0)) * fps);
       g.save();
       g.lineCap = 'round'; g.strokeStyle = 'rgba(0,229,255,0.85)'; g.lineWidth = 3 * u;

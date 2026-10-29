@@ -132,7 +132,7 @@ export class HudRenderer {
       if (r.showIds && st.dets) this.debugIds(g, st.dets);
       for (const p of shown) this.ring(g, p, st.t);
       if (st.shuttle && r.shuttle) this.shuttle(g, st.shuttle, st.t);
-      for (const p of [...shown].sort((a, b) => a.head[1] - b.head[1])) this.tag(g, p, st.stats);
+      if (r.tags !== false) for (const p of [...shown].sort((a, b) => a.head[1] - b.head[1])) this.tag(g, p, st.stats);
     });
     if (r.topHud) this.topHud(ctx, st.shuttle, st.preview);
     if (r.playerPanel) this.playerPanel(ctx, st.players, st.stats);

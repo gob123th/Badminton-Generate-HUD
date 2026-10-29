@@ -37,7 +37,7 @@ const DICT = {
 
     'model': 'โมเดล', 'model.s': 'YOLO11s-pose (แม่นกว่า)', 'model.n': 'YOLO11n-pose (เร็วกว่า)',
     'stride': 'ตรวจจับทุก', 'stride.1': '1 เฟรม', 'stride.2': '2 เฟรม (เร็วขึ้น)', 'stride.3': '3 เฟรม',
-    'opt.topHud': 'HUD ด้านบน', 'opt.playerPanel': 'แผงผู้เล่นซ้ายล่าง', 'opt.courtMap': 'Court map',
+    'opt.tags': 'ป้ายชื่อบนหัว', 'opt.topHud': 'HUD ด้านบน', 'opt.playerPanel': 'แผงผู้เล่นซ้ายล่าง', 'opt.courtMap': 'Court map',
     'opt.shuttle': 'ติดตามลูกขนไก่', 'opt.showIds': 'Debug IDs',
     'score.on': 'นับแต้ม (ต้องเปิดติดตามลูก)', 'score.startA': 'แต้มเริ่ม ทีม A', 'score.startB': 'ทีม B',
     'score.review': 'ตรวจ/แก้แต้มก่อนสร้างวิดีโอ',
@@ -74,7 +74,7 @@ const DICT = {
     'rv.head': 'ระบบเดาผู้ได้แต้ม {n} rally — ตรวจแล้วแก้ได้ แถว ⚠ = คนเสิร์ฟยืนผิดกล่องเทียบกับสกอร์ (อาจมีแต้มหลุด)',
     'rv.ok': '✓ ยืนยันแต้ม & สร้างวิดีโอ', 'rv.none': '— ไม่นับ', 'rv.addAfter': '+ แต้มหลุด', 'rv.addFirst': '+ แต้มหลุดก่อน rally แรก',
     'rv.manual': 'เพิ่มเอง', 'rv.final': 'สกอร์สุดท้าย {a}-{b}',
-    'rv.by.serve': 'คนเสิร์ฟถัดไป', 'rv.by.land': 'จุดลูกตก', 'rv.by.last': 'คนตีลูกสุดท้าย', 'rv.by.null': 'ไม่มีหลักฐาน',
+    'rv.by.box': 'กล่องเสิร์ฟถัดไป (ขวาคู่/ซ้ายคี่)', 'rv.by.serve': 'คนเสิร์ฟถัดไป', 'rv.by.land': 'จุดลูกตก', 'rv.by.last': 'คนตีลูกสุดท้าย', 'rv.by.null': 'ไม่มีหลักฐาน',
     'rv.warn': 'คนเสิร์ฟยืนผิดกล่องเทียบกับสกอร์ก่อนแต้มนี้ — อาจมีแต้มหลุดหรือเดาผิด',
     'rv.noRally': 'ไม่พบ rally — ไม่มีแต้มให้นับ',
 
@@ -119,7 +119,7 @@ const DICT = {
 
     'model': 'Model', 'model.s': 'YOLO11s-pose (more accurate)', 'model.n': 'YOLO11n-pose (faster)',
     'stride': 'Detect every', 'stride.1': '1 frame', 'stride.2': '2 frames (faster)', 'stride.3': '3 frames',
-    'opt.topHud': 'Top HUD', 'opt.playerPanel': 'Player panel (bottom-left)', 'opt.courtMap': 'Court map',
+    'opt.tags': 'Name tags over heads', 'opt.topHud': 'Top HUD', 'opt.playerPanel': 'Player panel (bottom-left)', 'opt.courtMap': 'Court map',
     'opt.shuttle': 'Track shuttle', 'opt.showIds': 'Debug IDs',
     'score.on': 'Count points (needs shuttle tracking)', 'score.startA': 'Start score team A', 'score.startB': 'Team B',
     'score.review': 'Review / fix points before rendering',
@@ -156,7 +156,7 @@ const DICT = {
     'rv.head': 'Point winners guessed for {n} rallies — check and fix. ⚠ rows = server stood in the wrong service court for the score (a point may be missing)',
     'rv.ok': '✓ Confirm points & render', 'rv.none': '— not a point', 'rv.addAfter': '+ missed point', 'rv.addFirst': '+ missed point before the first rally',
     'rv.manual': 'added', 'rv.final': 'Final score {a}-{b}',
-    'rv.by.serve': 'next server', 'rv.by.land': 'landing spot', 'rv.by.last': 'last hitter', 'rv.by.null': 'no evidence',
+    'rv.by.box': 'next service court (right even / left odd)', 'rv.by.serve': 'next server', 'rv.by.land': 'landing spot', 'rv.by.last': 'last hitter', 'rv.by.null': 'no evidence',
     'rv.warn': 'Server stood in the wrong service court for the score before this point — a point may be missing or mis-guessed',
     'rv.noRally': 'No rallies found — nothing to score',
 

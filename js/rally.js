@@ -164,9 +164,92 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
   const out = rallies.filter(r => r.hits.length >= 2).map(r => {
     const last = r.hits.at(-1).frame;
     let end = last; while (end + 1 < N && pos[end + 1] && end - last < 3 * fps) end++;
-    return { start: r.hits[0].frame, end: Math.max(end, last + Math.round(0.5 * fps)), hits: r.hits };
+    return { start: r.hits[0].frame, end: Math.max(end, last + Math.round(0.5 * fps)), hits: r.hits, serve: r.hits[0] };
   });
   return { pos, hits, rallies: out };
+}
+
+// ------------------------------------------------------------------ serves from the players (court lines)
+const NET_Y = 6.7, SHORT_SERVICE = 1.98;
+/**
+ * Serve moments from player court positions — far more reliable than the shuttle in casual footage. Before every serve
+ * the players stand still (server and receiver just behind the short service lines), then everyone starts moving.
+ * A serve = the end of a quiet stretch (mean player speed < 0.35 m/s for ≥ 0.7 s; stretches < 1 s apart are merged)
+ * at which someone stands within 1.8 m behind a short service line.
+ * box: the service court served from, 'R' | 'L' (own right/left facing the net) by vote of the players near the short
+ * lines, > 0.3 m off the centre line — server and receiver stand diagonally, i.e. both in their own right (or left)
+ * court. null when they disagree. Right ⇔ the serving team's score is even.
+ * boxes: per-frame [[x1,y1,x2,y2,playerIdx,courtX,courtY], ...]. Returns [{frame, quiet: [q0, q1], box}].
+ * Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip (serve / receive stances at the detected quiet stretches).
+ */
+export function detectServes(boxes, { fps = 30, quiet = 0.35, minQuiet = 0.7, line = 1.8 } = {}) {
+  const N = boxes.length, h = Math.max(1, Math.round(fps / 4));
+  const at = (i, p) => { const b = (boxes[i] || []).find(b => b[4] === p); return b && b.length >= 7 ? [b[5], b[6]] : null; };
+  const ids = [...new Set(boxes.flatMap(f => (f || []).map(b => b[4])))];
+  // mean speed of the tracked players over ±0.25 s (m/s); null with < 2 players
+  const act = new Array(N).fill(null);
+  for (let i = h; i < N - h; i++) {
+    const v = ids.map(p => { const a = at(i - h, p), b = at(i + h, p); return a && b ? hyp(b[0] - a[0], b[1] - a[1]) / ((2 * h) / fps) : null; }).filter(x => x != null);
+    if (v.length >= 2) act[i] = v.reduce((a, b) => a + b, 0) / v.length;
+  }
+  const nearLine = i => ids.some(p => {
+    const q = at(i, p), b = q && Math.abs(q[1] - NET_Y) - SHORT_SERVICE;
+    return q && b > -0.4 && b < line;
+  });
+  const spans = [];
+  for (let i = 0; i < N; i++) {
+    if (act[i] == null || act[i] >= quiet) continue;
+    let j = i; while (j < N && (act[j] == null || act[j] < quiet + 0.15)) j++;      // hysteresis
+    if (j - i >= minQuiet * fps && j < N - h) {                 // long enough, and play starts before the clip ends
+      const last = spans.at(-1);
+      if (last && i - last[1] < fps) last[1] = j; else spans.push([i, j]);
+    }
+    i = j;
+  }
+  const boxAt = i => {
+    let r = 0, l = 0;
+    for (const p of ids) {
+      const q = at(i, p), b = q && Math.abs(q[1] - NET_Y) - SHORT_SERVICE;
+      if (!q || b <= -0.4 || b >= line || Math.abs(q[0] - CW / 2) < 0.3) continue;
+      if (q[1] > NET_Y ? q[0] > CW / 2 : q[0] < CW / 2) r++; else l++;
+    }
+    return r > l && !l ? 'R' : l > r && !r ? 'L' : null;
+  };
+  return spans.filter(([, b]) => nearLine(b - 1)).map(([a, b]) => ({ frame: b, quiet: [a, b], box: boxAt(b - Math.round(fps / 6)) }));
+}
+
+/**
+ * Rallies from serve to serve (replaces the hit chains when serves were found). A rally starts at the serve and keeps
+ * the hits chained from it (< 4 s apart, as in analyzeShuttle) before the next serve's quiet stretch; it ends 1.5 s after
+ * the last of them (≥ 4 s). Hits after a break (passing the shuttle over between points) are not part of it.
+ * serve = the hit within -0.5 / +1.5 s of the serve moment; if TrackNet missed that hit, the first shuttle position in
+ * the window, given to the nearest player's racket zone (boxes as in analyzeShuttle).
+ */
+export function ralliesFromServes(an, serves, boxes, fps = 30) {
+  const N = an.pos.length;
+  return serves.map((sv, k) => {
+    const limit = serves[k + 1] ? serves[k + 1].quiet[0] : N - 1, w0 = sv.frame - Math.round(0.5 * fps), w1 = sv.frame + Math.round(1.5 * fps);
+    const hits = [];
+    for (const h of an.hits) {
+      if (h.frame < w0 || h.frame >= limit) continue;
+      const prev = hits.at(-1)?.frame ?? sv.frame;
+      if (h.frame - prev > 4 * fps) break;
+      hits.push(h);
+    }
+    let serve = hits[0]?.frame <= w1 ? hits[0] : null;
+    if (!serve) {
+      for (let i = Math.max(0, w0); i <= Math.min(w1, N - 1) && !serve; i++) {
+        if (!an.pos[i]) continue;
+        let best = null, bd = 1.5;
+        for (const b of boxes[i] || []) { const dd = zoneDist(an.pos[i][0], an.pos[i][1], b); if (dd < bd) { bd = dd; best = b; } }
+        if (best) serve = { frame: i, player: best[4] ?? null, court: best.length >= 7 ? [best[5], best[6]] : null, speed: null, guessed: true };
+      }
+    }
+    const start = Math.max(0, Math.min(serve?.frame ?? sv.frame, sv.frame));
+    // TrackNet often loses the shuttle in play: at least 4 s; `limit` (next serve's quiet stretch) bounds the review clip
+    const end = Math.min(limit, Math.max(hits.length ? hits.at(-1).frame + Math.round(1.5 * fps) : 0, start + 4 * fps));
+    return { start, end: Math.max(end, start + 1), limit, hits, serve, box: sv.box ?? null, byServe: true };
+  });
 }
 
 /**
@@ -217,51 +300,65 @@ export function shuttleStateAt(an, i, fps) {
 // ------------------------------------------------------------------ scoring (rally-point, teams 'A' / 'B')
 const NET = 6.7, CW = 6.1, CL = 13.4, SINGLES_IN = 0.46;
 const other = t => (t === 'A' ? 'B' : t === 'B' ? 'A' : null);
+const serveOf = r => (r ? r.serve ?? r.hits[0] ?? null : null);     // serve-based rallies set .serve (maybe guessed)
 
 /**
  * What scoring needs from the config + court, kept as plain functions so this file stays pure.
  * players: cfg.players ({team, side}); toCourt(x, y) → [cx, cy] metres.
  */
-export function scoreContext(players, toCourt) {
+export function scoreContext(players, toCourt, start = { A: 0, B: 0 }) {
   const sideTeam = {};
   for (const p of players) if (p.side && !sideTeam[p.side]) sideTeam[p.side] = p.team;
-  return { teamOf: i => players[i]?.team ?? null, sideTeam, toCourt, singles: players.length <= 2 };
+  return { teamOf: i => players[i]?.team ?? null, sideTeam, toCourt, singles: players.length <= 2, start };
 }
 
 /**
- * Guess each rally's winner. Evidence, strongest first:
+ * Guess each rally's winner, in order (keeps a running score from ctx.start). Evidence, strongest first:
+ *  'box'   – the next serve's service court (court lines): right ⇔ the server's score is even. The winner serves next
+ *            with score + 1, so when exactly one team's score + 1 fits the court, that team won this rally
  *  'serve' – the next rally's server's team (rally-point scoring: the winner serves next)
  *  'land'  – last shuttle position after the final hit, if the shuttle was falling into it and it maps onto the
  *            court area (± 2 m): on the floor the homography holds. A mid-air last point (TrackNet lost it, or a
  *            false static blob) maps to nonsense like 32 m and is ignored. With the last hitter known: landing on
  *            the hitter's own side (never crossed) or outside → hitter loses; inside the other side → hitter wins.
  *  'last'  – the last hitter's team loses
- * Returns [{winner: 'A'|'B'|null, by: 'serve'|'land'|'last'|null, land: [x, y]|null}] per rally.
+ * Returns [{winner: 'A'|'B'|null, by: 'box'|'serve'|'land'|'last'|null, land: [x, y]|null}] per rally.
  */
 export function autoWinners(an, ctx) {
-  const { teamOf, sideTeam, toCourt, singles } = ctx;
+  const sc = { A: +ctx.start?.A || 0, B: +ctx.start?.B || 0 };
   return an.rallies.map((r, i) => {
-    const next = an.rallies[i + 1];
-    const server = next ? teamOf(next.hits[0].player) : null;
-    if (server) return { winner: server, by: 'serve', land: null };
-    const lastHit = r.hits.at(-1), hitter = teamOf(lastHit.player);
-    let j = r.end;
-    while (j > lastHit.frame && !an.pos[j]) j--;
-    // falling into the last point: image y grew over the preceding tracked frames
-    let k = j;
-    while (k > Math.max(lastHit.frame, j - 8) && an.pos[k - 1]) k--;
-    const falling = j > lastHit.frame && an.pos[j] && an.pos[j][1] - an.pos[k][1] > 4;
-    const land = falling && toCourt ? toCourt(an.pos[j][0], an.pos[j][1]) : null;
-    if (land && land[0] > -2 && land[0] < CW + 2 && land[1] > -2 && land[1] < CL + 2) {
-      const x0 = singles ? SINGLES_IN : 0, side = land[1] < NET ? 'far' : 'near';
-      const inside = land[0] >= x0 && land[0] <= CW - x0 && land[1] >= 0 && land[1] <= CL;
-      let winner;
-      if (hitter) winner = sideTeam[side] === hitter || !inside ? other(hitter) : hitter;
-      else winner = inside ? other(sideTeam[side]) : sideTeam[side];
-      if (winner) return { winner, by: 'land', land: land.map(v => +v.toFixed(2)) };
-    }
-    return hitter ? { winner: other(hitter), by: 'last', land: null } : { winner: null, by: null, land: null };
+    const w = guessWinner(an, ctx, r, an.rallies[i + 1], sc);
+    if (w.winner) sc[w.winner]++;
+    return w;
   });
+}
+function guessWinner(an, ctx, r, next, sc) {
+  const { teamOf, sideTeam, toCourt, singles } = ctx;
+  if (next?.box) {
+    const fits = ['A', 'B'].filter(t => ((sc[t] + 1) % 2 === 0) === (next.box === 'R'));
+    if (fits.length === 1) return { winner: fits[0], by: 'box', land: null };
+  }
+  const server = serveOf(next) ? teamOf(serveOf(next).player) : null;
+  if (server) return { winner: server, by: 'serve', land: null };
+  const lastHit = r.hits.at(-1);
+  if (!lastHit) return { winner: null, by: null, land: null };
+  const hitter = teamOf(lastHit.player);
+  let j = r.end;
+  while (j > lastHit.frame && !an.pos[j]) j--;
+  // falling into the last point: image y grew over the preceding tracked frames
+  let k = j;
+  while (k > Math.max(lastHit.frame, j - 8) && an.pos[k - 1]) k--;
+  const falling = j > lastHit.frame && an.pos[j] && an.pos[j][1] - an.pos[k][1] > 4;
+  const land = falling && toCourt ? toCourt(an.pos[j][0], an.pos[j][1]) : null;
+  if (land && land[0] > -2 && land[0] < CW + 2 && land[1] > -2 && land[1] < CL + 2) {
+    const x0 = singles ? SINGLES_IN : 0, side = land[1] < NET ? 'far' : 'near';
+    const inside = land[0] >= x0 && land[0] <= CW - x0 && land[1] >= 0 && land[1] <= CL;
+    let winner;
+    if (hitter) winner = sideTeam[side] === hitter || !inside ? other(hitter) : hitter;
+    else winner = inside ? other(sideTeam[side]) : sideTeam[side];
+    if (winner) return { winner, by: 'land', land: land.map(v => +v.toFixed(2)) };
+  }
+  return hitter ? { winner: other(hitter), by: 'last', land: null } : { winner: null, by: null, land: null };
 }
 
 /**
@@ -280,12 +377,12 @@ export function buildScore(an, winners, extras, start, ctx) {
   };
   for (const e of extras.filter(e => e.after < 0)) point(-1, true, 0, e.winner);
   an.rallies.forEach((r, i) => {
-    const serve = r.hits[0], team = ctx.teamOf(serve.player);
-    let serveWarn = false;
-    if (team && serve.court && winners[i]) {
-      const right = serve.court[1] >= NET ? serve.court[0] > CW / 2 : serve.court[0] < CW / 2;   // server's own right
-      serveWarn = right !== (sc[team] % 2 === 0);
-    }
+    // serving team = last point's winner (rally point), else the detected server; court = detected box, else the server's spot
+    const serve = serveOf(r), lastW = rows.at(-1)?.winner;
+    const team = lastW === 'A' || lastW === 'B' ? lastW : serve ? ctx.teamOf(serve.player) : null;
+    const right = r.box ? r.box === 'R'
+      : serve?.court ? (serve.court[1] >= NET ? serve.court[0] > CW / 2 : serve.court[0] < CW / 2) : null;   // own right
+    const serveWarn = !!(team && right != null && winners[i]) && right !== (sc[team] % 2 === 0);
     point(i, false, r.end, winners[i] ?? null);
     rows.at(-1).serveWarn = serveWarn;
     for (const e of extras.filter(e => e.after === i)) point(i, true, r.end, e.winner);

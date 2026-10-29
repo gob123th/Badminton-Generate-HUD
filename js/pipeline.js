@@ -10,7 +10,7 @@ import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker } from './players.js';
 import { StatsTracker } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
-import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights } from './rally.js';
+import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes } from './rally.js';
 import { t } from './i18n.js';
 
 export async function openVideo(file) {
@@ -141,12 +141,15 @@ export async function renderVideo(opts) {
   if (useShuttle) for (const r of await shuttle.flush(W, H)) rawShuttle[r.frame] = r.pos;
 
   const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W, others }) : null;
+  // rallies from serve to serve (players' positions vs the service lines) when serves were found; else hit chains
+  const serves = an ? detectServes(boxes, { fps }) : [];
+  if (serves.length >= 2) an.rallies = ralliesFromServes(an, serves, boxes, fps);
 
   // ---------------------------------------------------------- score: auto guess, then optional user review
   let score = null;
   const skip = new Set();         // rallies the user marked "not a point" (passing the shuttle over, …): no highlight
   if (an && cfg.score?.enabled) {
-    const sctx = scoreContext(cfg.players, (x, y) => court.toCourt(x, y));
+    const sctx = scoreContext(cfg.players, (x, y) => court.toCourt(x, y), cfg.score.start);
     const auto = autoWinners(an, sctx);
     let picked = { winners: auto.map(a => a.winner), extras: [] };
     if (opts.review) {

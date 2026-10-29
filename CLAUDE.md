@@ -97,6 +97,16 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   within 0.5 s along its velocity. Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip 200–240 s. Known loss: the apex of a
   high lob after TrackNet lost the rise (> 0.5 s) is dropped (LOCK ON gap only; hits/score unaffected).
   Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others}` to replay rally.js variants in the page or node.
+- **Rallies come from serves** (`detectServes` / `ralliesFromServes`, rally.js) when ≥ 2 are found: before every serve the
+  players stand still (mean speed < 0.35 m/s ≥ 0.7 s) with someone within 1.8 m behind a short service line, then all move.
+  Verified by eye on "หมู มาย…" 0–120 s (serve/receive stances at each detected stretch). A rally = serve → hits chained
+  < 4 s from it, ≥ 4 s long; `limit` = next serve's quiet start (the review clip plays to it). The server = the hit near the
+  serve, else the first shuttle position after it given to the nearest racket zone (`guessed`). Hit-chain rallies are the
+  fallback (no players / one serve). TrackNet misses much of the shuttle in casual footage — never rely on hits alone.
+- **Service court parity** (right ⇔ serving team's score even): `detectServes` gives each serve a `box` ('R'/'L', vote of
+  the players near the short lines, > 0.3 m off the centre line; server and receiver are both in their own right/left).
+  `autoWinners` runs a score from `ctx.start`: when exactly one team's score + 1 fits the next serve's box, that team won
+  (`by: 'box'`, strongest). `buildScore` flags ⚠ when the box contradicts the running score (missed / extra point).
 - **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot, else
   last hitter loses. The landing spot is used only if the shuttle was *falling* into its last point and that maps within court
   ± 2 m — a mid-air last point (lost track / static false blob) mapped to 32 m and handed the point to the team that hit it out.
