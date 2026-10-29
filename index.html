@@ -16,6 +16,10 @@
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
+  <div id="browser-warn" class="browser-warn" role="alert" hidden>
+    <span>⚠️ เบราว์เซอร์นี้ยังไม่รองรับ — กรุณาเปิดด้วย <b>Google Chrome</b> (หรือ Microsoft Edge) บนคอมพิวเตอร์</span>
+    <button class="ghost" id="browser-warn-x" title="ปิด">✕</button>
+  </div>
   <header class="topbar">
     <div class="brand"><span class="mark"></span>BADMINTON <b>HUD</b></div>
     <div class="sub">สร้างวิดีโอแบดมินตันสไตล์ถ่ายทอดสด · ประมวลผลในเครื่องคุณ ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์</div>
@@ -61,13 +65,19 @@
 
       <section class="step" data-step="players">
         <h2><i>3</i>ผู้เล่น</h2>
+        <div class="row pick">
+          <label>เฟรมที่ใช้ตรวจจับ (วินาที)<input type="range" id="pick-t" min="0" step="0.1" value="0"></label>
+          <input type="number" id="pick-n" min="0" step="0.1" value="0" title="วินาที" aria-label="เฟรมที่ใช้ตรวจจับ (วินาที)">
+          <button class="ghost" id="pick-prev" title="ถอย 1 วินาที">◀</button>
+          <button class="ghost" id="pick-next" title="เดินหน้า 1 วินาที">▶</button>
+        </div>
         <div class="row">
-          <button class="ghost" id="btn-detect">📸 ตรวจจับผู้เล่นจากเฟรมเริ่ม</button>
+          <button class="ghost" id="btn-detect">📸 ตรวจจับผู้เล่นจากเฟรมนี้</button>
           <button class="ghost" id="btn-add-player">+ เพิ่มเอง</button>
         </div>
         <div id="cards" class="cards"></div>
         <div id="assign-status" class="status"></div>
-        <p class="hint">ระบบตัดรูปผู้เล่นในสนามมาให้ ใส่ชื่อ/สี/ทีม ได้เลย · คลิกกรอบคนในภาพเพื่อเพิ่มคนที่หลุด · ฝั่ง <b>far</b> = หลังเน็ต, <b>near</b> = ฝั่งกล้อง</p>
+        <p class="hint">ระบบตัดรูปผู้เล่นในสนามมาให้ ใส่ชื่อ/สี/ทีม ได้เลย · คลิกกรอบคนในภาพเพื่อเพิ่มคนที่หลุด · ฝั่ง <b>far</b> = หลังเน็ต, <b>near</b> = ฝั่งกล้อง · ถ้าเฟรมเริ่มมีคนยืนทับกัน เลื่อนไปเฟรมที่เห็นครบทุกคนแล้วกดตรวจจับ</p>
         <div class="row">
           <button class="ghost" id="btn-export">Export config</button>
           <label class="ghost button">Import<input type="file" id="import" accept=".json" hidden></label>

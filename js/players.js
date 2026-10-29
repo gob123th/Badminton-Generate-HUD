@@ -42,7 +42,7 @@ export function torsoHist(ctx, box) {
   for (let k = 0; k < 16; k++) hist[k] /= n;
   return hist;
 }
-const similarity = (a, b) => { let s = 0; for (let k = 0; k < 16; k++) s += Math.sqrt(a[k] * b[k]); return s; };
+export const similarity = (a, b) => { let s = 0; for (let k = 0; k < 16; k++) s += Math.sqrt(a[k] * b[k]); return s; };
 
 export function footPoint(det) {
   const [x1, y1, x2, y2] = det.box;

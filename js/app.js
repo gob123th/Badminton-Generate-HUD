@@ -2,7 +2,7 @@ import { loadConfig, saveConfig, importConfig, loadCorners, saveCorners } from '
 import { openVideo, grabFrame, renderVideo } from './pipeline.js';
 import { PoseDetector } from './detector.js';
 import { ShuttleTracker } from './shuttle.js';
-import { footPoint, torsoHist } from './players.js';
+import { footPoint, torsoHist, similarity } from './players.js';
 import { Court } from './court.js';
 import { Stage } from './stage.js';
 import { loadFonts } from './hud.js';
@@ -56,6 +56,11 @@ function activate(step) {
   b.className = `badge ${gpu && enc ? 'ok' : 'warn'}`;
   if (!enc) toast('เบราว์เซอร์นี้ไม่รองรับ WebCodecs — กรุณาใช้ Chrome หรือ Edge รุ่นล่าสุด', 8000);
 })();
+// only Chromium (Chrome/Edge) is tested; Safari, Firefox and every iOS browser (WebKit) lack userAgentData
+if (!navigator.userAgentData?.brands?.some(b => b.brand === 'Chromium')) {
+  $('browser-warn').hidden = false;
+  $('browser-warn-x').onclick = () => { $('browser-warn').hidden = true; };
+}
 
 // ------------------------------------------------------------------ player cards
 function crop(src, box, kind) {
@@ -131,6 +136,19 @@ function playerFromDet(d, i, prev) {
   };
 }
 
+/** fresh[i] → previous card of the same person: same court side, most similar shirt (frames may reorder players) */
+function matchCards(prev, fresh) {
+  const pairs = [];
+  fresh.forEach((f, i) => prev.forEach((p, j) => {
+    if (p.side !== f.side) return;
+    pairs.push({ i, j, s: p.hist?.length === 16 && f.hist.length === 16 ? similarity(p.hist, f.hist) : 0 });
+  }));
+  pairs.sort((a, b) => b.s - a.s || a.i - b.i || a.j - b.j);
+  const match = [], used = new Set();
+  for (const { i, j } of pairs) if (!match[i] && !used.has(j)) { match[i] = prev[j]; used.add(j); }
+  return match;
+}
+
 async function detectPlayers() {
   if (!state.vid) return toast('เลือกวิดีโอก่อน');
   if (!state.frame) await refreshFrame();
@@ -151,9 +169,10 @@ async function detectPlayers() {
     inCourt.sort((a, b) => (a.court[1] < 6.7 ? 0 : 1) - (b.court[1] < 6.7 ? 0 : 1) || a.court[0] - b.court[0]);
     state.dets = inCourt.concat(dets.filter(d => !court.inPlay(d.court)));   // outsiders clickable too
     stage.dets = state.dets;
+    const fresh = inCourt.map((d, i) => playerFromDet(d, i, null));
     const prev = state.cfg.players;
-    const reuse = prev.length === inCourt.length;                              // same line-up → keep names/colors
-    state.cfg.players = inCourt.map((d, i) => playerFromDet(d, i, reuse ? prev[i] : null));
+    const match = prev.length === fresh.length ? matchCards(prev, fresh) : []; // same line-up → keep names/colors
+    state.cfg.players = fresh.map((p, i) => match[i] ? { ...p, name: match[i].name, color: match[i].color, team: match[i].team } : p);
     state.hl = state.cfg.players.length ? 0 : -1;
     save(); renderCards(); labelStage();
     setStatus('assign-status', `พบ ${inCourt.length} คนในสนาม${dets.length > inCourt.length ? ` (นอกสนาม ${dets.length - inCourt.length} คน — คลิกกรอบเพื่อเพิ่ม)` : ''}`, inCourt.length ? 'ok' : 'warn');
@@ -210,6 +229,7 @@ async function loadVideo(file) {
   $('drop-text').textContent = '📹 ' + file.name;
   $('video-info').textContent = `${v.width}×${v.height} · ${v.fps.toFixed(2)} fps · ${fmt(v.duration)} นาที · ${v.codec}${v.audioCodec ? ' + ' + v.audioCodec : ' (ไม่มีเสียง)'}`;
   $('start').value = 0; $('end').value = v.duration.toFixed(1); $('start').max = $('end').max = v.duration;
+  $('pick-t').max = $('pick-n').max = v.duration;
   $('empty').hidden = true;
   stage.points = loadCorners(v) || [];
   stage.orientation = state.cfg.court.orientation;
@@ -217,10 +237,11 @@ async function loadVideo(file) {
   onCourtChange();
   if (!stage.court()) activate('court');
 }
-async function refreshFrame() {
-  const t = range().start;
+async function refreshFrame(t = range().start) {
+  t = Math.min(Math.max(t, 0), state.vid.duration);
+  $('pick-t').value = $('pick-n').value = t.toFixed(1);
   const src = await grabFrame(state.vid, t);
-  if (!src) { toast('อ่านเฟรมที่เวลา ' + t + ' วินาทีไม่ได้'); return; }
+  if (!src) { toast('อ่านเฟรมที่เวลา ' + t.toFixed(1) + ' วินาทีไม่ได้'); return; }
   const c = document.createElement('canvas');
   c.width = src.width; c.height = src.height;
   c.getContext('2d').drawImage(src, 0, 0);
@@ -236,6 +257,18 @@ const drop = $('drop');
 drop.addEventListener('drop', e => e.dataTransfer.files[0] && loadVideo(e.dataTransfer.files[0]));
 let startTimer;
 $('start').oninput = () => { clearTimeout(startTimer); startTimer = setTimeout(() => state.vid && refreshFrame(), 300); };
+// players step: pick another frame to detect from (e.g. when players overlap at the start)
+let pickTimer;
+const pickFrame = t => {
+  if (!state.vid || state.busy) return;
+  $('pick-t').value = $('pick-n').value = (+t).toFixed(1);
+  clearTimeout(pickTimer);
+  pickTimer = setTimeout(async () => { await refreshFrame(+t); activate('players'); labelStage(); }, 250);
+};
+$('pick-t').oninput = e => pickFrame(e.target.value);
+$('pick-n').onchange = e => pickFrame(e.target.value);
+$('pick-prev').onclick = () => pickFrame(Math.max(+$('pick-n').value - 1, 0));
+$('pick-next').onclick = () => pickFrame(Math.min(+$('pick-n').value + 1, state.vid?.duration || 0));
 $('btn-test15').onclick = () => { if (!state.vid) return; $('end').value = Math.min(range().start + 15, state.vid.duration).toFixed(1); };
 $('btn-full').onclick = () => { if (!state.vid) return; $('start').value = 0; $('end').value = state.vid.duration.toFixed(1); refreshFrame(); };
 
