@@ -1,5 +1,6 @@
 // YOLO11-pose (ONNX, 640x640) in the browser: WebGPU first, WASM fallback.
 import * as ort from 'onnxruntime-web';
+import { t } from './i18n.js';
 
 const SIZE = 640;
 const NUM_ANCHORS = 8400;
@@ -7,7 +8,7 @@ const MIN_CONF = 0.1;          // keep low-score boxes for ByteTrack's second as
 
 // Collect chunks instead of pre-sizing from content-length: hosts like GitHub Pages gzip the model,
 // so content-length is the compressed size and the decoded stream is larger.
-export async function fetchWithProgress(url, onProgress, errMsg = 'โหลดโมเดลไม่สำเร็จ') {
+export async function fetchWithProgress(url, onProgress, errMsg = t('err.modelFetch')) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${errMsg} (${res.status}) ${url}`);
   const total = +res.headers.get('content-length') || 0;     // approximate when compressed
@@ -47,7 +48,7 @@ export class PoseDetector {
         errors.push(`${ep}: ${e.message || e}`);
       }
     }
-    throw new Error('เปิดโมเดลไม่ได้\n' + errors.join('\n'));
+    throw new Error(t('err.modelOpen') + '\n' + errors.join('\n'));
   }
 
   constructor(session, backend) {

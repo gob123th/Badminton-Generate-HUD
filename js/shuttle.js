@@ -3,18 +3,19 @@
 // analyzeShuttle(): cleans the trajectory, fills short gaps, detects hits, estimates shot speed, segments rallies.
 import * as ort from 'onnxruntime-web';
 import { fetchWithProgress } from './detector.js';
+import { t } from './i18n.js';
 
 export const TN_W = 512, TN_H = 288, TN_SEQ = 8;
 
 export class ShuttleTracker {
   static async create(url, onProgress) {
-    const bytes = await fetchWithProgress(url, onProgress, 'โหลดโมเดลลูกขนไก่ไม่สำเร็จ');
+    const bytes = await fetchWithProgress(url, onProgress, t('err.shuttleFetch'));
     const errors = [];
     for (const ep of 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm']) {
       try { return new ShuttleTracker(await ort.InferenceSession.create(bytes, { executionProviders: [ep] }), ep); }
       catch (e) { errors.push(`${ep}: ${e.message || e}`); }
     }
-    throw new Error('เปิดโมเดลลูกขนไก่ไม่ได้\n' + errors.join('\n'));
+    throw new Error(t('err.shuttleOpen') + '\n' + errors.join('\n'));
   }
 
   constructor(session, backend) {

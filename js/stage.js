@@ -1,7 +1,7 @@
 // Interactive frame view: court calibration (click/drag 4 corners) and player assignment (click a box).
 import { Court } from './court.js';
+import { t } from './i18n.js';
 
-const LABELS = ['ซ้ายบน', 'ขวาบน', 'ขวาล่าง', 'ซ้ายล่าง'];
 
 export class Stage {
   constructor(canvas, { onChange } = {}) {
@@ -103,7 +103,8 @@ export class Stage {
         ctx.fillStyle = i === this.drag ? '#ffc400' : '#00E5FF'; ctx.strokeStyle = '#04121f'; ctx.lineWidth = 2 * u;
         ctx.beginPath(); ctx.arc(x, y, 7 * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 3 * u;
-        ctx.strokeText(`${i + 1} ${LABELS[i]}`, x + 10 * u, y - 9 * u); ctx.fillText(`${i + 1} ${LABELS[i]}`, x + 10 * u, y - 9 * u);
+        const label = `${i + 1} ${t(`corner.${i}`)}`;
+        ctx.strokeText(label, x + 10 * u, y - 9 * u); ctx.fillText(label, x + 10 * u, y - 9 * u);
       });
     } else if (this.mode === 'assign') {
       ctx.font = `${Math.round(22 * s)}px "Kanit", sans-serif`;

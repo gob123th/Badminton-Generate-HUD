@@ -7,6 +7,7 @@ export const DEFAULT_CONFIG = {
   stamina: { start: 100, drainPerMeter: 0.25, min: 5 },
   stats: { deadbandM: 0.15 },
   smoothing: { posAlpha: 0.45, tagAlpha: 0.25 },
+  score: { enabled: true, review: true, start: { A: 0, B: 0 } },   // needs shuttle tracking
   render: { ringRadiusM: 0.55, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false },
 };
 

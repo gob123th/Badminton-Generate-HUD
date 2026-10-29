@@ -17,67 +17,70 @@
 </head>
 <body>
   <div id="browser-warn" class="browser-warn" role="alert" hidden>
-    <span>⚠️ เบราว์เซอร์นี้ยังไม่รองรับ — กรุณาเปิดด้วย <b>Google Chrome</b> (หรือ Microsoft Edge) บนคอมพิวเตอร์</span>
-    <button class="ghost" id="browser-warn-x" title="ปิด">✕</button>
+    <span data-i18n="browser.warn"></span>
+    <button class="ghost" id="browser-warn-x" data-i18n-title="close">✕</button>
   </div>
   <header class="topbar">
     <div class="brand"><span class="mark"></span>BADMINTON <b>HUD</b></div>
-    <div class="sub">สร้างวิดีโอแบดมินตันสไตล์ถ่ายทอดสด · ประมวลผลในเครื่องคุณ ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์</div>
-    <div class="badges"><span id="badge-gpu" class="badge">ตรวจสอบ GPU…</span></div>
+    <div class="sub" data-i18n="sub"></div>
+    <div class="badges">
+      <span id="badge-gpu" class="badge" data-i18n="badge.checking"></span>
+      <div class="lang" role="group" aria-label="Language"><button class="ghost" data-lang="th">TH</button><button class="ghost" data-lang="en">EN</button></div>
+    </div>
   </header>
 
   <main class="layout">
     <aside class="panel">
       <section class="step" data-step="video">
-        <h2><i>1</i>วิดีโอ</h2>
+        <h2><i>1</i><span data-i18n="step.video"></span></h2>
         <label class="drop" id="drop">
           <input type="file" id="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden>
-          <span id="drop-text">ลากไฟล์วิดีโอมาวาง หรือคลิกเพื่อเลือก</span>
+          <span id="drop-text" data-i18n="drop"></span>
         </label>
         <div id="video-info" class="info muted"></div>
         <div class="row range">
-          <label>เริ่ม (วินาที)<input type="number" id="start" min="0" step="0.1" value="0"></label>
-          <label>จบ (วินาที)<input type="number" id="end" min="0" step="0.1"></label>
+          <label><span data-i18n="start"></span><input type="number" id="start" min="0" step="0.1" value="0"></label>
+          <label><span data-i18n="end"></span><input type="number" id="end" min="0" step="0.1"></label>
         </div>
         <div class="row">
-          <button class="ghost" id="btn-test15">ทดสอบ 15 วินาที</button>
-          <button class="ghost" id="btn-full">ทั้งคลิป</button>
+          <button class="ghost" id="btn-test15" data-i18n="test15"></button>
+          <button class="ghost" id="btn-full" data-i18n="full"></button>
         </div>
       </section>
 
       <section class="step" data-step="court">
-        <h2><i>2</i>สนาม</h2>
+        <h2><i>2</i><span data-i18n="step.court"></span></h2>
         <div class="row">
-          <label>มุมกล้อง
+          <label><span data-i18n="orientation"></span>
             <select id="orientation">
-              <option value="behind">หลัง/เฉียงหลังเส้นท้าย (เน็ตแนวนอน)</option>
-              <option value="side">ข้างสนาม (เน็ตแนวตั้ง)</option>
+              <option value="behind" data-i18n="orient.behind"></option>
+              <option value="side" data-i18n="orient.side"></option>
             </select>
           </label>
         </div>
         <div class="row">
-          <button class="ghost" id="btn-undo">ย้อนจุดล่าสุด</button>
-          <button class="ghost" id="btn-reset">เริ่มใหม่</button>
+          <button class="ghost" id="btn-undo" data-i18n="undo"></button>
+          <button class="ghost" id="btn-reset" data-i18n="reset"></button>
         </div>
-        <p class="hint">คลิก <b>มุมนอกของสนามคู่</b> 4 มุมตามลำดับ <b>ซ้ายบน → ขวาบน → ขวาล่าง → ซ้ายล่าง</b> ตามที่เห็นในภาพ (มุมที่อยู่นอกภาพคลิกในขอบสีเข้มได้) ลากจุดเพื่อปรับ (ครบ 4 จุดแล้วคลิกตรงไหนก็ได้ มุมที่ใกล้สุดจะย้ายมา) ให้เส้นเขียวทับเส้นสนามจริง</p>
+        <p class="hint" data-i18n="court.hint"></p>
         <div id="court-status" class="status"></div>
       </section>
 
       <section class="step" data-step="players">
-        <h2><i>3</i>ผู้เล่น</h2>
+        <h2><i>3</i><span data-i18n="step.players"></span></h2>
         <div class="row pick">
-          <label>เฟรมที่ใช้ตรวจจับ (วินาที)<input type="range" id="pick-t" min="0" step="0.1" value="0"></label>
-          <input type="number" id="pick-n" min="0" step="0.1" value="0" title="วินาที" aria-label="เฟรมที่ใช้ตรวจจับ (วินาที)">
-          <button class="ghost" id="pick-prev" title="ถอย 1 วินาที">◀</button>
-          <button class="ghost" id="pick-next" title="เดินหน้า 1 วินาที">▶</button>
+          <label><span data-i18n="pick"></span><input type="range" id="pick-t" min="0" step="0.1" value="0"></label>
+          <input type="number" id="pick-n" min="0" step="0.1" value="0" data-i18n-title="seconds" data-i18n-aria="pick">
+          <button class="ghost" id="pick-prev" data-i18n-title="back1">◀</button>
+          <button class="ghost" id="pick-next" data-i18n-title="fwd1">▶</button>
         </div>
         <div class="row">
-          <button class="ghost" id="btn-detect">📸 ตรวจจับผู้เล่นจากเฟรมนี้</button>
-          <button class="ghost" id="btn-add-player">+ เพิ่มเอง</button>
+          <button class="ghost" id="btn-detect" data-i18n="detect"></button>
+          <button class="ghost" id="btn-add-player" data-i18n="addPlayer"></button>
         </div>
         <div id="cards" class="cards"></div>
         <div id="assign-status" class="status"></div>
-        <p class="hint">ระบบตัดรูปผู้เล่นในสนามมาให้ ใส่ชื่อ/สี/ทีม ได้เลย · คลิกกรอบคนในภาพเพื่อเพิ่มคนที่หลุด · ฝั่ง <b>far</b> = หลังเน็ต, <b>near</b> = ฝั่งกล้อง · ถ้าเฟรมเริ่มมีคนยืนทับกัน เลื่อนไปเฟรมที่เห็นครบทุกคนแล้วกดตรวจจับ</p>
+        <p class="hint" data-i18n="players.hint"></p>
         <div class="row">
           <button class="ghost" id="btn-export">Export config</button>
           <label class="ghost button">Import<input type="file" id="import" accept=".json" hidden></label>
@@ -85,50 +88,64 @@
       </section>
 
       <section class="step" data-step="render">
-        <h2><i>4</i>สร้างวิดีโอ</h2>
+        <h2><i>4</i><span data-i18n="step.render"></span></h2>
         <div class="row">
-          <label>โมเดล
+          <label><span data-i18n="model"></span>
             <select id="model">
-              <option value="models/yolo11s-pose.onnx">YOLO11s-pose (แม่นกว่า)</option>
-              <option value="models/yolo11n-pose.onnx">YOLO11n-pose (เร็วกว่า)</option>
+              <option value="models/yolo11s-pose.onnx" data-i18n="model.s"></option>
+              <option value="models/yolo11n-pose.onnx" data-i18n="model.n"></option>
             </select>
           </label>
-          <label>ตรวจจับทุก
+          <label><span data-i18n="stride"></span>
             <select id="stride">
-              <option value="1">1 เฟรม</option>
-              <option value="2">2 เฟรม (เร็วขึ้น)</option>
-              <option value="3">3 เฟรม</option>
+              <option value="1" data-i18n="stride.1"></option>
+              <option value="2" data-i18n="stride.2"></option>
+              <option value="3" data-i18n="stride.3"></option>
             </select>
           </label>
         </div>
         <div class="toggles">
-          <label><input type="checkbox" id="r-topHud"> HUD ด้านบน</label>
-          <label><input type="checkbox" id="r-playerPanel"> แผงผู้เล่นซ้ายล่าง</label>
-          <label><input type="checkbox" id="r-courtMap"> Court map</label>
-          <label><input type="checkbox" id="r-shuttle"> ติดตามลูกขนไก่</label>
-          <label><input type="checkbox" id="r-showIds"> Debug IDs</label>
+          <label><input type="checkbox" id="r-topHud"> <span data-i18n="opt.topHud"></span></label>
+          <label><input type="checkbox" id="r-playerPanel"> <span data-i18n="opt.playerPanel"></span></label>
+          <label><input type="checkbox" id="r-courtMap"> <span data-i18n="opt.courtMap"></span></label>
+          <label><input type="checkbox" id="r-shuttle"> <span data-i18n="opt.shuttle"></span></label>
+          <label><input type="checkbox" id="r-showIds"> <span data-i18n="opt.showIds"></span></label>
         </div>
-        <label class="inline"><input type="checkbox" id="save-direct" checked> บันทึกลงไฟล์โดยตรง (แนะนำสำหรับคลิปยาว)</label>
+        <div class="score-opts">
+          <label class="inline"><input type="checkbox" id="score-on"> <span data-i18n="score.on"></span></label>
+          <div class="row">
+            <label><span data-i18n="score.startA"></span><input type="number" id="score-a" min="0" max="30" step="1"></label>
+            <label><span data-i18n="score.startB"></span><input type="number" id="score-b" min="0" max="30" step="1"></label>
+          </div>
+          <label class="inline"><input type="checkbox" id="score-review"> <span data-i18n="score.review"></span></label>
+        </div>
+        <label class="inline"><input type="checkbox" id="save-direct" checked> <span data-i18n="saveDirect"></span></label>
         <div class="row">
-          <button class="primary" id="btn-render">▶ สร้างวิดีโอ</button>
-          <button class="ghost danger" id="btn-cancel" disabled>ยกเลิก</button>
+          <button class="primary" id="btn-render" data-i18n="render"></button>
+          <button class="ghost danger" id="btn-cancel" disabled data-i18n="cancel"></button>
         </div>
         <div class="progress"><div id="bar"></div></div>
         <div id="render-status" class="status"></div>
+        <div id="review" class="review" hidden>
+          <p id="review-head" class="hint"></p>
+          <ol id="review-rows" class="review-rows"></ol>
+          <div id="review-final" class="review-final"></div>
+          <button class="primary" id="btn-review-ok" data-i18n="rv.ok"></button>
+        </div>
         <div id="downloads" class="row"></div>
       </section>
     </aside>
 
     <section class="stage">
       <div class="stage-head">
-        <span id="stage-title">เลือกวิดีโอเพื่อเริ่ม</span>
+        <span id="stage-title"></span>
       </div>
       <div class="stage-body">
         <canvas id="stage" hidden></canvas>
         <canvas id="out" hidden></canvas>
         <div id="empty" class="empty">
           <div class="empty-mark"></div>
-          <p>ลากไฟล์วิดีโอแบดมินตัน (กล้องตั้งนิ่ง) มาวางที่ช่อง <b>1 วิดีโอ</b></p>
+          <p data-i18n="empty"></p>
         </div>
       </div>
     </section>

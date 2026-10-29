@@ -10,20 +10,21 @@ import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker } from './players.js';
 import { StatsTracker } from './stats.js';
 import { HudRenderer } from './hud.js';
-import { analyzeShuttle, shuttleStateAt } from './rally.js';
+import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore } from './rally.js';
+import { t } from './i18n.js';
 
 export async function openVideo(file) {
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
   const video = await input.getPrimaryVideoTrack();
-  if (!video) throw new Error('ไม่พบ video track ในไฟล์นี้');
-  if (!(await video.canDecode())) throw new Error(`เบราว์เซอร์นี้ถอดรหัส ${video.codec} ไม่ได้ (ลองใช้ Chrome / Edge)`);
+  if (!video) throw new Error(t('err.noVideoTrack'));
+  if (!(await video.canDecode())) throw new Error(t('err.decode', { codec: video.codec }));
   const audio = await input.getPrimaryAudioTrack();
   const duration = await input.computeDuration();
   const pstats = await video.computePacketStats(120);
   const sink = new CanvasSink(video, { poolSize: 2 });
   const firstTs = await video.getFirstTimestamp();
   const first = await sink.getCanvas(firstTs);
-  if (!first) throw new Error('อ่านเฟรมแรกของวิดีโอไม่ได้');
+  if (!first) throw new Error(t('err.firstFrame'));
   return {
     file, input, video, audio, duration, firstTs,
     fps: pstats.averagePacketRate || 30,
@@ -42,7 +43,7 @@ export async function grabFrame(vid, t) {
 const bitrateFor = (w, h, fps) => Math.round(Math.min(Math.max(w * h * fps * 0.12, 3e6), 20e6));
 async function pickCodec(w, h, bitrate) {
   for (const c of ['avc', 'hevc', 'vp9', 'av1']) if (await canEncodeVideo(c, { width: w, height: h, bitrate })) return c;
-  throw new Error('เบราว์เซอร์นี้ไม่รองรับการ encode วิดีโอ (WebCodecs)');
+  throw new Error(t('err.encode'));
 }
 
 /** Stats-like view over a snapshot (what HudRenderer reads). */
@@ -129,6 +130,21 @@ export async function renderVideo(opts) {
 
   const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W }) : null;
 
+  // ---------------------------------------------------------- score: auto guess, then optional user review
+  let score = null;
+  if (an && cfg.score?.enabled) {
+    const sctx = scoreContext(cfg.players, (x, y) => court.toCourt(x, y));
+    const auto = autoWinners(an, sctx);
+    let picked = { winners: auto.map(a => a.winner), extras: [] };
+    if (opts.review) {
+      picked = await opts.review({ an, auto, ctx: sctx, start: cfg.score.start, time: f => start + snaps[Math.min(f, snaps.length - 1)].t });
+      if (!picked || signal?.aborted) return null;
+    }
+    score = buildScore(an, picked.winners, picked.extras, cfg.score.start, sctx);
+    score.auto = auto;
+    an.score = score.timeline;
+  }
+
   // ---------------------------------------------------------- pass 2: render + encode
   const bitrate = bitrateFor(W, H, fps);
   const codec = await pickCodec(W, H, bitrate);
@@ -198,8 +214,16 @@ export async function renderVideo(opts) {
         })),
         shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed })),
       } : null,
+      score: score ? {
+        start: { ...cfg.score.start }, final: score.final,
+        points: score.rows.map(r => ({
+          rally: r.rally + 1, manual: r.extra, t_s: +(snaps[Math.max(0, Math.min(r.frame, snaps.length - 1))].t).toFixed(2),
+          winner: r.winner, score: `${r.A}-${r.B}`, evidence: r.extra ? 'manual' : score.auto[r.rally]?.by ?? null, serve_court_mismatch: r.serveWarn,
+        })),
+      } : null,
     },
     blob: null,
+    analysis: an,   // debug: window.__lastResult.analysis (shuttle path, hits, rallies)
   };
   if (!writable) result.blob = new Blob([target.buffer], { type: 'video/mp4' });
   return result;

@@ -138,6 +138,7 @@ export class HudRenderer {
       { label: 'RALLY COUNT', value: sh?.rallyCount != null ? String(sh.rallyCount) : '--', unit: 'SHOT' },
       { label: 'SHOT SPEED', value: sh?.lastSpeed != null ? String(sh.lastSpeed) : '--', unit: 'KM/H', note: 'EST.' },
     ];
+    if (sh?.score) panels.unshift({ label: 'SCORE A - B', value: `${sh.score.A} - ${sh.score.B}`, unit: '' });
     if (preview) panels[0].value = 'ANALYZING';
     const pw = 290 * s, ph = 96 * s, gap = 16 * s, skew = 18 * s;
     const total = panels.length * pw + (panels.length - 1) * gap;

@@ -6,6 +6,8 @@ import { footPoint, torsoHist, similarity } from './players.js';
 import { Court } from './court.js';
 import { Stage } from './stage.js';
 import { loadFonts } from './hud.js';
+import { buildScore } from './rally.js';
+import { t, setLang, getLang, onLangChange, applyI18n } from './i18n.js';
 
 const $ = id => document.getElementById(id);
 const PALETTE = ['#00E5FF', '#FF3D7F', '#FFC400', '#7CFF4F', '#B388FF', '#FF9100'];
@@ -19,10 +21,18 @@ const stage = new Stage($('stage'), { onChange: onCourtChange });
 
 // ------------------------------------------------------------------ helpers
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-function setStatus(id, text, cls = '') { const el = $(id); el.textContent = text; el.className = `status ${cls}`; }
+// status lines / stage title keep a text function so they re-translate when the language changes
+const live = new Map();
+function setText(id, text, cls) {
+  const el = $(id), fn = typeof text === 'function' ? text : () => text;
+  live.set(id, { fn, cls }); el.textContent = fn();
+  if (cls != null) el.className = cls;
+}
+const setStatus = (id, text, cls = '') => setText(id, text, `status ${cls}`);
+const setTitle = text => setText('stage-title', text);
 function toast(text, ms = 4000) {
-  const t = $('toast'); t.textContent = text; t.hidden = false;
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, ms);
+  const el = $('toast'); el.textContent = text; el.hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { el.hidden = true; }, ms);
 }
 const save = () => saveConfig(state.cfg);
 const range = () => {
@@ -33,12 +43,9 @@ const range = () => {
 };
 function activate(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.dataset.step === step));
-  const titles = {
-    video: 'เฟรมเริ่มต้น', court: 'ปรับเส้นสนาม — คลิก/ลาก 4 มุมนอกของสนามคู่',
-    players: 'ผู้เล่นที่ตรวจพบ — คลิกกรอบเพื่อเพิ่ม/เลือก', render: 'ผลลัพธ์',
-  };
-  $('stage-title').textContent = state.vid ? titles[step] : 'เลือกวิดีโอเพื่อเริ่ม';
+  state.step = step;
   if (state.busy) return;
+  setTitle(() => t(state.vid ? `title.${step}` : 'title.empty'));
   const showOut = step === 'render' && $('out').width > 0 && !$('out').hidden;
   if (!showOut && state.frame) {
     $('stage').hidden = false; $('out').hidden = true;
@@ -52,9 +59,9 @@ function activate(step) {
   const enc = 'VideoEncoder' in window;
   let gpu = false;
   try { gpu = !!(await navigator.gpu?.requestAdapter()); } catch { /* no webgpu */ }
-  b.textContent = `${gpu ? 'WebGPU ✓' : 'WebGPU ✗ (ใช้ CPU — ช้ากว่า)'} · ${enc ? 'WebCodecs ✓' : 'WebCodecs ✗'}`;
-  b.className = `badge ${gpu && enc ? 'ok' : 'warn'}`;
-  if (!enc) toast('เบราว์เซอร์นี้ไม่รองรับ WebCodecs — กรุณาใช้ Chrome หรือ Edge รุ่นล่าสุด', 8000);
+  delete b.dataset.i18n;
+  setText('badge-gpu', () => `${gpu ? 'WebGPU ✓' : t('badge.noGpu')} · ${enc ? 'WebCodecs ✓' : 'WebCodecs ✗'}`, `badge ${gpu && enc ? 'ok' : 'warn'}`);
+  if (!enc) toast(t('noWebCodecs'), 8000);
 })();
 // only Chromium (Chrome/Edge) is tested; Safari, Firefox and every iOS browser (WebKit) lack userAgentData
 if (!navigator.userAgentData?.brands?.some(b => b.brand === 'Chromium')) {
@@ -90,14 +97,14 @@ function renderCards() {
     card.innerHTML = `
       ${p.thumb ? `<img class="thumb" alt="">` : '<div class="thumb">👤</div>'}
       <div class="fields">
-        <input type="text" placeholder="ชื่อผู้เล่น">
+        <input type="text" placeholder="${t('card.name')}">
         <div class="line">
-          <input type="color" title="สี">
-          <select title="ทีม"><option value="A">ทีม A</option><option value="B">ทีม B</option></select>
-          <select title="ฝั่งเริ่ม"><option value="far">far · หลังเน็ต</option><option value="near">near · ฝั่งกล้อง</option></select>
+          <input type="color" title="${t('card.color')}">
+          <select title="${t('card.team')}"><option value="A">${t('team', { t: 'A' })}</option><option value="B">${t('team', { t: 'B' })}</option></select>
+          <select title="${t('card.side')}"><option value="far">${t('side.far')}</option><option value="near">${t('side.near')}</option></select>
         </div>
       </div>
-      <button class="x ghost" title="ลบ">✕</button>`;
+      <button class="x ghost" title="${t('card.del')}">✕</button>`;
     if (p.thumb) card.querySelector('img').src = p.thumb;
     const [name, color, team, side] = card.querySelectorAll('input[type=text], input[type=color], select');
     name.value = p.name; color.value = p.color; team.value = p.team; side.value = p.side;
@@ -125,7 +132,7 @@ function labelStage() {
 function playerFromDet(d, i, prev) {
   const side = d.court[1] < 6.7 ? 'far' : 'near';
   return {
-    name: prev?.name ?? `ผู้เล่น ${i + 1}`,
+    name: prev?.name ?? t('playerN', { n: i + 1 }),
     color: prev?.color ?? PALETTE[i % PALETTE.length],
     team: prev?.team ?? (side === 'far' ? 'A' : 'B'),
     side,
@@ -149,16 +156,20 @@ function matchCards(prev, fresh) {
   return match;
 }
 
-async function detectPlayers() {
-  if (!state.vid) return toast('เลือกวิดีโอก่อน');
+// one detector session: runs are queued, and rendering waits for them (concurrent session.run hung the page)
+let detectRun = Promise.resolve();
+const detectPlayers = () => (detectRun = detectRun.then(detectPlayersNow));
+async function detectPlayersNow() {
+  if (state.busy) return;
+  if (!state.vid) return toast(t('needVideo'));
   if (!state.frame) await refreshFrame();
-  if (!state.frame) return setStatus('assign-status', 'อ่านเฟรมจากวิดีโอไม่ได้', 'err');
+  if (!state.frame) return setStatus('assign-status', () => t('frameErr'), 'err');
   const court = stage.court();
-  if (!court) { activate('court'); return toast('ตั้งค่าสนามก่อน'); }
+  if (!court) { activate('court'); return toast(t('needCourt')); }
   activate('players');
   try {
     const det = await getDetector('assign-status');
-    setStatus('assign-status', 'กำลังตรวจจับ…');
+    setStatus('assign-status', () => t('detecting'));
     const { width: W, height: H } = state.frame;
     const raw = await det.detect(state.frame, W, H, state.cfg.model.iou, court.farTiles(W, H));
     const dets = raw.filter(d => d.score >= state.cfg.model.conf).map(d => {
@@ -176,7 +187,8 @@ async function detectPlayers() {
     state.cfg.players = fresh.map((p, i) => match[i] ? { ...p, name: match[i].name, color: match[i].color, team: match[i].team } : p);
     state.hl = state.cfg.players.length ? 0 : -1;
     save(); renderCards(); labelStage();
-    setStatus('assign-status', `พบ ${inCourt.length} คนในสนาม${dets.length > inCourt.length ? ` (นอกสนาม ${dets.length - inCourt.length} คน — คลิกกรอบเพื่อเพิ่ม)` : ''}`, inCourt.length ? 'ok' : 'warn');
+    const nIn = inCourt.length, nOut = dets.length - inCourt.length;
+    setStatus('assign-status', () => t('found', { n: nIn }) + (nOut ? t('foundOut', { n: nOut }) : ''), nIn ? 'ok' : 'warn');
     if (inCourt.length) $('cards').querySelector('input[type=text]')?.focus();
   } catch (e) { setStatus('assign-status', e.message, 'err'); }
 }
@@ -186,13 +198,13 @@ stage.onPickDet = di => {
   if (existing >= 0) { state.hl = existing; renderCards(); labelStage(); return; }
   const n = state.cfg.players.length;
   state.cfg.players.push(playerFromDet(state.dets[di], di, null));
-  state.cfg.players[n].name = `ผู้เล่น ${n + 1}`;
+  state.cfg.players[n].name = t('playerN', { n: n + 1 });
   state.cfg.players[n].color = PALETTE[n % PALETTE.length];
   state.hl = n; save(); renderCards(); labelStage();
 };
 $('btn-add-player').onclick = () => {
   const n = state.cfg.players.length;
-  state.cfg.players.push({ name: `ผู้เล่น ${n + 1}`, color: PALETTE[n % PALETTE.length], team: n % 2 ? 'B' : 'A', side: n % 2 ? 'near' : 'far' });
+  state.cfg.players.push({ name: t('playerN', { n: n + 1 }), color: PALETTE[n % PALETTE.length], team: n % 2 ? 'B' : 'A', side: n % 2 ? 'near' : 'far' });
   save(); renderCards();
 };
 $('btn-export').onclick = () => {
@@ -202,8 +214,8 @@ $('btn-export').onclick = () => {
 };
 $('import').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { state.cfg = importConfig(await f.text()); save(); syncControls(); renderCards(); toast('นำเข้า config แล้ว'); }
-  catch (err) { toast('ไฟล์ config ไม่ถูกต้อง: ' + err.message); }
+  try { state.cfg = importConfig(await f.text()); save(); syncControls(); renderCards(); toast(t('importOk')); }
+  catch (err) { toast(t('importBad', { msg: err.message })); }
   e.target.value = '';
 };
 
@@ -214,8 +226,16 @@ function syncControls() {
   $('model').value = state.cfg.model.file;
   $('stride').value = String(state.cfg.model.stride);
   $('orientation').value = state.cfg.court.orientation;
+  $('score-on').checked = !!state.cfg.score.enabled;
+  $('score-review').checked = !!state.cfg.score.review;
+  $('score-a').value = state.cfg.score.start.A; $('score-b').value = state.cfg.score.start.B;
+  syncScoreOpts();
 }
-for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); };
+const syncScoreOpts = () => $('score-on').closest('.score-opts').classList.toggle('off', !state.cfg.score.enabled || !state.cfg.render.shuttle);
+for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); };
+$('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); };
+$('score-review').onchange = e => { state.cfg.score.review = e.target.checked; save(); };
+for (const k of ['A', 'B']) $('score-' + k.toLowerCase()).onchange = e => { state.cfg.score.start[k] = Math.max(0, Math.round(+e.target.value || 0)); e.target.value = state.cfg.score.start[k]; save(); };
 $('model').onchange = e => { state.cfg.model.file = e.target.value; save(); };
 $('stride').onchange = e => { state.cfg.model.stride = +e.target.value; save(); };
 $('orientation').onchange = e => { state.cfg.court.orientation = e.target.value; stage.orientation = e.target.value; stage.draw(); onCourtChange(); save(); };
@@ -223,12 +243,12 @@ $('orientation').onchange = e => { state.cfg.court.orientation = e.target.value;
 // ------------------------------------------------------------------ video
 async function loadVideo(file) {
   if (state.busy) return;
-  $('drop-text').textContent = 'กำลังเปิด ' + file.name + '…';
+  setText('drop-text', () => t('opening', { name: file.name }));
   try { state.vid = await openVideo(file); }
-  catch (e) { $('drop-text').textContent = 'ลากไฟล์วิดีโอมาวาง หรือคลิกเพื่อเลือก'; toast(e.message, 8000); return; }
+  catch (e) { setText('drop-text', () => t('drop')); toast(e.message, 8000); return; }
   const v = state.vid;
-  $('drop-text').textContent = '📹 ' + file.name;
-  $('video-info').textContent = `${v.width}×${v.height} · ${v.fps.toFixed(2)} fps · ${fmt(v.duration)} นาที · ${v.codec}${v.audioCodec ? ' + ' + v.audioCodec : ' (ไม่มีเสียง)'}`;
+  setText('drop-text', '📹 ' + file.name);
+  setText('video-info', () => t('videoInfo', { w: v.width, h: v.height, fps: v.fps.toFixed(2), dur: fmt(v.duration), codec: v.codec }) + (v.audioCodec ? ' + ' + v.audioCodec : t('noAudio')));
   $('start').value = 0; $('end').value = v.duration.toFixed(1); $('start').max = $('end').max = v.duration;
   $('pick-t').max = $('pick-n').max = v.duration;
   $('empty').hidden = true;
@@ -238,15 +258,15 @@ async function loadVideo(file) {
   onCourtChange();
   if (!stage.court()) activate('court');
 }
-async function refreshFrame(t = range().start) {
-  t = Math.min(Math.max(t, 0), state.vid.duration);
-  $('pick-t').value = $('pick-n').value = t.toFixed(1);
-  const src = await grabFrame(state.vid, t);
-  if (!src) { toast('อ่านเฟรมที่เวลา ' + t.toFixed(1) + ' วินาทีไม่ได้'); return; }
+async function refreshFrame(sec = range().start) {
+  sec = Math.min(Math.max(sec, 0), state.vid.duration);
+  $('pick-t').value = $('pick-n').value = sec.toFixed(1);
+  const src = await grabFrame(state.vid, sec);
+  if (!src) { toast(t('frameAtErr', { t: sec.toFixed(1) })); return; }
   const c = document.createElement('canvas');
   c.width = src.width; c.height = src.height;
   c.getContext('2d').drawImage(src, 0, 0);
-  state.frame = c; state.frameT = +t.toFixed(3);
+  state.frame = c; state.frameT = +sec.toFixed(3);
   state.dets = []; stage.dets = []; stage.labels.clear();
   stage.setFrame(c);
   $('stage').hidden = false; $('out').hidden = true;
@@ -260,11 +280,11 @@ let startTimer;
 $('start').oninput = () => { clearTimeout(startTimer); startTimer = setTimeout(() => state.vid && refreshFrame(), 300); };
 // players step: pick another frame to detect from (e.g. when players overlap at the start)
 let pickTimer;
-const pickFrame = t => {
+const pickFrame = sec => {
   if (!state.vid || state.busy) return;
-  $('pick-t').value = $('pick-n').value = (+t).toFixed(1);
+  $('pick-t').value = $('pick-n').value = (+sec).toFixed(1);
   clearTimeout(pickTimer);
-  pickTimer = setTimeout(async () => { await refreshFrame(+t); activate('players'); labelStage(); }, 250);
+  pickTimer = setTimeout(async () => { await refreshFrame(+sec); activate('players'); labelStage(); }, 250);
 };
 $('pick-t').oninput = e => pickFrame(e.target.value);
 $('pick-n').onchange = e => pickFrame(e.target.value);
@@ -278,11 +298,11 @@ let hadCourt = false;
 function onCourtChange() {
   if (!state.vid) return;
   const n = stage.points.length;
-  if (n < 4) { hadCourt = false; setStatus('court-status', `คลิกมุมที่ ${n + 1}/4`, 'warn'); return; }
+  if (n < 4) { hadCourt = false; setStatus('court-status', () => t('court.click', { n: n + 1 }), 'warn'); return; }
   const court = stage.court();
-  if (!court) { setStatus('court-status', 'มุมสนามไม่ถูกต้อง ลองคลิกใหม่', 'err'); return; }
+  if (!court) { setStatus('court-status', () => t('court.bad'), 'err'); return; }
   saveCorners(state.vid, stage.points.map(p => p.map(v => +v.toFixed(1))));
-  setStatus('court-status', '✓ ตั้งค่าสนามแล้ว — ตรวจดูว่าเส้นเขียวทับเส้นสนามจริง', 'ok');
+  setStatus('court-status', () => t('court.ok'), 'ok');
   if (!hadCourt && stage.drag < 0 && !state.dets.length && state.frame) { hadCourt = true; detectPlayers(); }
   hadCourt = true;
 }
@@ -293,27 +313,92 @@ $('btn-reset').onclick = () => stage.reset();
 async function getDetector(statusId) {
   const url = state.cfg.model.file;
   if (state.detector && state.detectorUrl === url) return state.detector;
-  state.detector = await PoseDetector.create(url, p => setStatus(statusId, `กำลังโหลดโมเดลผู้เล่น ${(p * 100).toFixed(0)}%`));
+  state.detector = await PoseDetector.create(url, p => setStatus(statusId, () => t('loadPlayerModel', { p: (p * 100).toFixed(0) })));
   state.detectorUrl = url;
   setStatus(statusId, '');
   return state.detector;
 }
 async function getShuttle(statusId) {
   if (state.shuttle) return state.shuttle;
-  state.shuttle = await ShuttleTracker.create(SHUTTLE_MODEL, p => setStatus(statusId, `กำลังโหลดโมเดลลูกขนไก่ ${(p * 100).toFixed(0)}%`));
+  state.shuttle = await ShuttleTracker.create(SHUTTLE_MODEL, p => setStatus(statusId, () => t('loadShuttleModel', { p: (p * 100).toFixed(0) })));
   setStatus(statusId, '');
   return state.shuttle;
+}
+
+// ------------------------------------------------------------------ score review (pipeline pauses here)
+const BY = { serve: 'rv.by.serve', land: 'rv.by.land', last: 'rv.by.last' };
+function reviewScore({ an, auto, ctx, start, time }) {
+  const winners = auto.map(a => a.winner), extras = [];
+  const box = $('review'), list = $('review-rows');
+  let sel = -1;
+  const seek = async (frame, rally) => {
+    sel = rally; draw();
+    const src = await grabFrame(state.vid, time(Math.max(0, frame)));
+    if (src) $('out').getContext('2d').drawImage(src, 0, 0, $('out').width, $('out').height);
+  };
+  const pick = (value, onChange, none = true) => {
+    const s = document.createElement('select');
+    s.innerHTML = `<option value="A">${t('team', { t: 'A' })}</option><option value="B">${t('team', { t: 'B' })}</option>`
+      + (none ? `<option value="">${t('rv.none')}</option>` : '');
+    s.value = value ?? '';
+    s.onclick = e => e.stopPropagation();
+    s.onchange = () => { onChange(s.value || null); draw(); };
+    return s;
+  };
+  const button = (text, onClick) => Object.assign(document.createElement('button'), {
+    className: 'ghost', textContent: text, onclick: e => { e.stopPropagation(); onClick(); draw(); },
+  });
+  function draw() {
+    const sc = buildScore(an, winners, extras, start, ctx);
+    setText('review-head', () => t(an.rallies.length ? 'rv.head' : 'rv.noRally', { n: an.rallies.length }), 'hint');
+    setText('review-final', () => t('rv.final', { a: sc.final.A, b: sc.final.B }), 'review-final');
+    list.innerHTML = '';
+    if (extras.some(e => e.after < 0) || an.rallies.length) {
+      const li = document.createElement('li');
+      li.appendChild(button(t('rv.addFirst'), () => extras.push({ after: -1, winner: 'A' })));
+      li.style.gridTemplateColumns = '1fr';
+      list.appendChild(li);
+    }
+    sc.rows.forEach(row => {
+      const li = document.createElement('li');
+      li.className = (row.extra ? 'extra ' : '') + (row.serveWarn ? 'warn ' : '') + (sel === row.rally && !row.extra ? 'sel' : '');
+      if (row.serveWarn) li.title = t('rv.warn');
+      const num = row.extra ? '+' : `#${row.rally + 1}`;
+      const a = auto[row.rally];
+      const by = row.extra ? t('rv.manual') : `${fmt(time(row.frame) - range().start)} · ${t(BY[a?.by] ?? 'rv.by.null')}`;
+      li.innerHTML = `<span class="num">${num}</span><span class="sc">${row.A}-${row.B}</span><span class="by"></span><span class="acts"></span>`;
+      li.querySelector('.by').textContent = by;
+      const acts = li.querySelector('.acts');
+      if (row.extra) {
+        const e = extras.filter(x => x.after === row.rally)[sc.rows.filter(r => r.extra && r.rally === row.rally).indexOf(row)];
+        acts.append(pick(e.winner, v => { e.winner = v; }, false), button('✕', () => extras.splice(extras.indexOf(e), 1)));
+      } else {
+        acts.append(pick(winners[row.rally], v => { winners[row.rally] = v; }), button(t('rv.addAfter'), () => extras.push({ after: row.rally, winner: 'A' })));
+        li.onclick = () => seek(row.frame, row.rally);
+      }
+      list.appendChild(li);
+    });
+  }
+  box.hidden = false; draw();
+  setTitle(() => t('title.review'));
+  return new Promise(resolve => {
+    const done = v => { box.hidden = true; state.abort.signal.removeEventListener('abort', onAbort); resolve(v); };
+    const onAbort = () => done(null);
+    state.abort.signal.addEventListener('abort', onAbort);
+    $('btn-review-ok').onclick = () => done({ winners: [...winners], extras: extras.map(e => ({ ...e })) });
+  });
 }
 
 // ------------------------------------------------------------------ render
 $('btn-render').onclick = async () => {
   if (state.busy) return;
-  if (!state.vid) return toast('เลือกวิดีโอก่อน');
+  if (!state.vid) return toast(t('needVideo'));
+  await detectRun;
   const court = stage.court();
-  if (!court) { activate('court'); return toast('ตั้งค่าสนามก่อน'); }
-  if (!state.cfg.players.length) { activate('players'); return toast('เพิ่มผู้เล่นอย่างน้อย 1 คน'); }
+  if (!court) { activate('court'); return toast(t('needCourt')); }
+  if (!state.cfg.players.length) { activate('players'); return toast(t('needPlayer')); }
   const { start, end } = range();
-  if (end - start < 0.5) return toast('ช่วงเวลาสั้นเกินไป');
+  if (end - start < 0.5) return toast(t('tooShort'));
 
   let fileHandle = null;
   if ($('save-direct').checked && 'showSaveFilePicker' in window) {
@@ -324,7 +409,7 @@ $('btn-render').onclick = async () => {
       });
     } catch (e) { if (e.name === 'AbortError') return; }
   } else if (end - start > 120) {
-    toast('คลิปยาว: เบราว์เซอร์นี้ต้องเก็บวิดีโอไว้ในหน่วยความจำจนเสร็จ อาจใช้ RAM มาก');
+    toast(t('longClip'));
   }
 
   state.busy = true; state.abort = new AbortController();
@@ -332,7 +417,7 @@ $('btn-render').onclick = async () => {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.dataset.step === 'render'));
   const out = $('out');
   $('stage').hidden = true; out.hidden = false;
-  $('stage-title').textContent = 'กำลังประมวลผล (พรีวิวสด)';
+  setTitle(() => t('title.processing'));
   const onBeforeUnload = e => { e.preventDefault(); e.returnValue = ''; };
   window.addEventListener('beforeunload', onBeforeUnload);
   try {
@@ -342,33 +427,34 @@ $('btn-render').onclick = async () => {
     const cfg = structuredClone(state.cfg);
     const seeds = {};
     cfg.players.forEach((p, i) => { if (p.seed && Math.abs((p.seedT ?? -1) - start) < 0.05) seeds[i] = p.seed; });
-    const phases = { bg: 'เตรียมภาพพื้นหลัง', analyze: 'วิเคราะห์', render: 'สร้างวิดีโอ' };
     const res = await renderVideo({
       vid: state.vid, cfg, court: new Court(stage.points, cfg.court.orientation, cfg.court.marginM),
       detector, shuttle, seeds, start, end, canvas: out, fileHandle, signal: state.abort.signal,
+      review: cfg.score.enabled && cfg.score.review ? reviewScore : null,
       onProgress: p => {
         $('bar').style.width = `${Math.min(100, p.frac * 100).toFixed(1)}%`;
-        $('stage-title').textContent = p.phase === 'render' ? 'กำลังสร้างวิดีโอ' : 'กำลังวิเคราะห์ (พรีวิวสด)';
-        $('render-status').textContent = `${phases[p.phase]}${p.frame ? ` · เฟรม ${p.frame}/${p.total}` : ''}${p.eta != null ? ` · เหลือ ~${fmt(p.eta)}` : ''}`;
+        setTitle(() => t(p.phase === 'render' ? 'title.encoding' : 'title.analyzing'));
+        setStatus('render-status', () => t(`phase.${p.phase}`) + (p.frame ? t('progress.frame', { a: p.frame, b: p.total }) : '') + (p.eta != null ? t('progress.eta', { t: fmt(p.eta) }) : ''));
       },
     });
-    if (!res) { setStatus('render-status', 'ยกเลิกแล้ว', 'warn'); return; }
+    if (!res) { setStatus('render-status', () => t('canceled'), 'warn'); return; }
     $('bar').style.width = '100%';
     const dl = $('downloads');
     const base = state.vid.file.name.replace(/\.[^.]+$/, '') + '_hud';
-    if (res.blob) dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(res.blob), download: base + '.mp4', className: 'button primary', textContent: '⬇ ดาวน์โหลดวิดีโอ' }));
+    if (res.blob) dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(res.blob), download: base + '.mp4', className: 'button primary', textContent: t('download') }));
     const js = new Blob([JSON.stringify(res.stats, null, 2)], { type: 'application/json' });
     dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(js), download: base + '.stats.json', className: 'button', textContent: '⬇ stats.json' }));
-    const sh = res.stats.shuttle;
-    setStatus('render-status', `✓ เสร็จแล้ว ${res.frames} เฟรม (${res.codec.toUpperCase()})${fileHandle ? ' · บันทึกไฟล์แล้ว' : ''}${sh ? `\nRally ${sh.rallies.length} · ช็อต ${sh.shots.length}` : ''}`, 'ok');
-    $('stage-title').textContent = 'ผลลัพธ์ (เฟรมสุดท้าย)';
+    const sh = res.stats.shuttle, scf = res.stats.score?.final;
+    setStatus('render-status', () => t('done', { n: res.frames, codec: res.codec.toUpperCase() }) + (fileHandle ? t('doneSaved') : '')
+      + (scf ? t('doneScore', { a: scf.A, b: scf.B }) : '') + (sh ? t('doneShuttle', { r: sh.rallies.length, s: sh.shots.length }) : ''), 'ok');
+    setTitle(() => t('title.result'));
     window.__lastResult = res;
-    toast('สร้างวิดีโอเสร็จแล้ว');
+    toast(t('doneToast'));
   } catch (e) {
     console.error(e);
-    setStatus('render-status', 'ผิดพลาด: ' + (e.message || e), 'err');
+    setStatus('render-status', () => t('error', { msg: e.message || e }), 'err');
   } finally {
-    state.busy = false;
+    state.busy = false; $('review').hidden = true;
     $('btn-render').disabled = false; $('btn-cancel').disabled = true;
     window.removeEventListener('beforeunload', onBeforeUnload);
   }
@@ -379,9 +465,19 @@ document.querySelectorAll('.step').forEach(sec => sec.addEventListener('pointerd
   if (!sec.classList.contains('active')) activate(sec.dataset.step);
 }));
 
+// ------------------------------------------------------------------ language
+const syncLangButtons = () => document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === getLang()));
+document.querySelectorAll('[data-lang]').forEach(b => { b.onclick = () => setLang(b.dataset.lang); });
+onLangChange(() => {
+  syncLangButtons();
+  for (const [id, { fn }] of live) $(id).textContent = fn();
+  renderCards(); stage.draw();
+});
+
 // ------------------------------------------------------------------ init
+applyI18n(); syncLangButtons();
 syncControls();
 renderCards();
 activate('video');
-state.fontsReady = loadFonts().catch(e => toast('โหลดฟอนต์ไม่สำเร็จ: ' + e.message));
+state.fontsReady = loadFonts().catch(e => toast(t('fontErr', { msg: e.message })));
 window.__app = { state, stage, loadVideo, detectPlayers };
