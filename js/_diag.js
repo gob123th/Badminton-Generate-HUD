@@ -8,12 +8,14 @@ import { Court } from './court.js';
 import { loadConfig } from './config.js';
 import { CanvasSink } from 'mediabunny';
 
-export async function run({ url = '_full.mp4', start = 0, end = 180, every = 1, fixed = true } = {}) {
+// corners: TL,TR,BR,BL in px for the clip (default = sample clip, 1280×720)
+export async function run({ url = '_full.mp4', start = 0, end = 180, every = 1, fixed = true,
+  corners = [[-82.3, 339.7], [387.7, 317.3], [1415.1, 508.5], [539.5, 970.8]] } = {}) {
   const st = window.__diag = { done: false, frame: 0, log: [] };
   const blob = await (await fetch(url)).blob();
-  const vid = await openVideo(new File([blob], 'กอล์ฟ หมู vs วา มาร์ค.mp4'));
+  const vid = await openVideo(new File([blob], url));
   const cfg = loadConfig();
-  const court = new Court([[-82.3, 339.7], [387.7, 317.3], [1415.1, 508.5], [539.5, 970.8]], 'behind', 1.2);
+  const court = new Court(corners, 'behind', 1.2);
   const det = await PoseDetector.create(cfg.model.file);
   const W = vid.width, H = vid.height, fps = vid.fps;
   const cv = new OffscreenCanvas(W, H), ctx = cv.getContext('2d', { willReadFrequently: true });

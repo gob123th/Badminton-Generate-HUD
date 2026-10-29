@@ -1,11 +1,6 @@
 // Defaults + persistence (localStorage). Everything is UTF-8 / Thai-safe.
 export const DEFAULT_CONFIG = {
-  players: [
-    { name: 'หมู', color: '#FFC400', team: 'A', side: 'far' },
-    { name: 'กอล์ฟ', color: '#00E5FF', team: 'A', side: 'far' },
-    { name: 'วา', color: '#FF3D7F', team: 'B', side: 'near' },
-    { name: 'มาร์ค', color: '#7CFF4F', team: 'B', side: 'near' },
-  ],
+  players: [],     // never preset: cards come from detection on the user's own clip
   court: { orientation: 'behind', marginM: 1.2 },
   model: { file: 'models/yolo11s-pose.onnx', conf: 0.3, iou: 0.5, stride: 1 },
   tracking: { maxSpeed: 7, maxJump: 1.5, lostTtl: 1.0 },
@@ -15,12 +10,8 @@ export const DEFAULT_CONFIG = {
   render: { ringRadiusM: 0.55, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false },
 };
 
-// Court corners already measured for known clips (file name → corners TL, TR, BR, BL in px).
-export const PRESET_CORNERS = {
-  'กอล์ฟ หมู vs วา มาร์ค.mp4': { size: [1280, 720], corners: [[-82.3, 339.7], [387.7, 317.3], [1415.1, 508.5], [539.5, 970.8]] },
-};
-
-const KEY = 'bhud.config.v2';
+const KEY = 'bhud.config.v3';
+const LEGACY_KEYS = ['bhud.config.v2'];   // v2 shipped preset player names; carry over everything except players
 const clone = o => JSON.parse(JSON.stringify(o));
 
 function merge(base, over) {
@@ -30,7 +21,22 @@ function merge(base, over) {
   return out;
 }
 
+function migrate() {
+  try {
+    if (localStorage.getItem(KEY)) return;
+    for (const k of LEGACY_KEYS) {
+      const old = localStorage.getItem(k);
+      if (!old) continue;
+      const cfg = JSON.parse(old); delete cfg.players;
+      localStorage.setItem(KEY, JSON.stringify(cfg));
+      break;
+    }
+    LEGACY_KEYS.forEach(k => localStorage.removeItem(k));
+  } catch { /* storage unavailable */ }
+}
+
 export function loadConfig() {
+  migrate();
   try { return merge(clone(DEFAULT_CONFIG), JSON.parse(localStorage.getItem(KEY) || '{}')); }
   catch { return clone(DEFAULT_CONFIG); }
 }
@@ -45,8 +51,6 @@ export function loadCorners(vid) {
     const saved = JSON.parse(localStorage.getItem(cornerKey(vid)) || 'null');
     if (saved?.length === 4) return saved;
   } catch { /* ignore */ }
-  const preset = PRESET_CORNERS[vid.file.name];
-  if (preset && preset.size[0] === vid.width && preset.size[1] === vid.height) return clone(preset.corners);
   return null;
 }
 export function saveCorners(vid, corners) {

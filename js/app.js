@@ -2,7 +2,7 @@ import { loadConfig, saveConfig, importConfig, loadCorners, saveCorners } from '
 import { openVideo, grabFrame, renderVideo } from './pipeline.js';
 import { PoseDetector } from './detector.js';
 import { ShuttleTracker } from './shuttle.js';
-import { footPoint } from './players.js';
+import { footPoint, torsoHist } from './players.js';
 import { Court } from './court.js';
 import { Stage } from './stage.js';
 import { loadFonts } from './hud.js';
@@ -127,6 +127,7 @@ function playerFromDet(d, i, prev) {
     thumb: crop(state.frame, d.box, 'thumb'),
     avatar: crop(state.frame, d.box, 'avatar'),
     seed: d.court.map(v => +v.toFixed(3)), seedT: state.frameT, detIndex: i,
+    hist: Array.from(torsoHist(state.frame.getContext('2d'), d.box) || []).map(v => +v.toFixed(4)),
   };
 }
 
@@ -339,7 +340,10 @@ $('btn-render').onclick = async () => {
   }
 };
 $('btn-cancel').onclick = () => state.abort?.abort();
-document.querySelectorAll('.step h2').forEach(h => { h.onclick = () => activate(h.parentElement.dataset.step); });
+// any interaction inside a step (heading, buttons, inputs) makes it the active step, so the stage mode follows
+document.querySelectorAll('.step').forEach(sec => sec.addEventListener('pointerdown', () => {
+  if (!sec.classList.contains('active')) activate(sec.dataset.step);
+}));
 
 // ------------------------------------------------------------------ init
 syncControls();

@@ -12,7 +12,9 @@ function iou(a, b) {
 export const fpsAlpha = (a30, fps) => 1 - Math.pow(1 - a30, 30 / Math.max(fps, 1));
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const NET_SLACK = 0.6;           // m a player may reach past the net line (lunges / net kills)
-const APP_W = 5;                 // appearance weight: (1 - similarity) * APP_W metres
+const APP_W = 10;                // appearance weight: (1 - similarity) * APP_W metres
+const APP_LEARN = 45;            // clean samples averaged into a shirt fingerprint, then frozen
+const APP_VETO = 0.12;           // detection looks this much more like a same-side partner → not this player
 
 /** 16-bin shirt colour histogram of the torso (black, 3 greys, 12 hues). */
 export function torsoHist(ctx, box) {
@@ -79,7 +81,9 @@ export class PlayerTracker {
     const anchors = defaultAnchors(cfg.players);
     this.players = cfg.players.map((p, i) => ({
       idx: i, name: p.name, color: p.color, team: p.team,
-      half: (p.side || (anchors[i][1] < NET_Y ? 'far' : 'near')) === 'far' ? 0 : 1, app: null,
+      half: (p.side || (anchors[i][1] < NET_Y ? 'far' : 'near')) === 'far' ? 0 : 1,
+      // shirt fingerprint: from the player card (named by the user) or learned from the first clean frames, then frozen
+      app: p.hist?.length === 16 ? Float32Array.from(p.hist) : null, appN: p.hist?.length === 16 ? APP_LEARN : 0, appSum: null,
       anchor: seeds[i] || anchors[i],
       pos: null, head: null, box: null, trackId: null,
       visible: false, everSeen: false, lastSeen: -1e9,
@@ -92,7 +96,13 @@ export class PlayerTracker {
   gate(p, t) { return p.everSeen ? Math.min(this.maxJump + this.maxSpeed * Math.max(t - p.lastSeen, 0), 8) : 15; }
   /** hard rule: players never change court half (end changes are not handled) */
   onSide(p, d) { return p.half === 0 ? d.court[1] < NET_Y + NET_SLACK : d.court[1] > NET_Y - NET_SLACK; }
-  sim(p, d) { return p.app && d.hist ? similarity(p.app, d.hist) : null; }
+  sim(p, d) { return p.appN >= APP_LEARN && d.hist ? similarity(p.app, d.hist) : null; }
+  /** true when d clearly wears a same-side partner's shirt rather than p's */
+  vetoed(p, d) {
+    const mine = this.sim(p, d);
+    if (mine === null) return false;
+    return this.players.some(q => q !== p && q.half === p.half && (this.sim(q, d) ?? -1) > mine + APP_VETO);
+  }
   cost(p, d) {
     let c = dist(d.court, this.refPos(p));
     const s = this.sim(p, d);
@@ -117,15 +127,7 @@ export class PlayerTracker {
       if (pi === undefined) return;
       const p = this.players[pi];
       const dd = p.everSeen ? dist(d.court, p.pos) : 0;
-      let ok = this.onSide(p, d) && (!p.everSeen || dd <= this.gate(p, t));
-      if (ok) {
-        const mine = this.sim(p, d);
-        if (mine !== null) for (const q of this.players) {
-          if (q === p || q.half !== p.half) continue;
-          const other = this.sim(q, d);
-          if (other !== null && other > mine + 0.2) { ok = false; break; }   // ByteTrack swapped partners
-        }
-      }
+      const ok = this.onSide(p, d) && (!p.everSeen || dd <= this.gate(p, t)) && !this.vetoed(p, d);   // ByteTrack may swap partners
       if (!ok) { this.owner.delete(d.tid); return; }
       if (!cands.has(pi) || dd < cands.get(pi)[0]) cands.set(pi, [dd, di]);
     });
@@ -135,7 +137,7 @@ export class PlayerTracker {
     const pairs = [];
     for (const p of this.players) {
       if (assigned.has(p.idx)) continue;
-      dets.forEach((d, di) => { if (!used.has(di) && this.onSide(p, d)) pairs.push([this.cost(p, d), p.idx, di]); });
+      dets.forEach((d, di) => { if (!used.has(di) && this.onSide(p, d) && !this.vetoed(p, d)) pairs.push([this.cost(p, d), p.idx, di]); });
     }
     pairs.sort((a, b) => a[0] - b[0]);
     for (const [c, pi, di] of pairs) {
@@ -149,14 +151,14 @@ export class PlayerTracker {
       if (assigned.has(p.idx)) this.apply(p, dets[assigned.get(p.idx)], t);
       else p.visible = false;
     }
-    // learn shirt colours slowly, only when the player stands clear of everyone else in the image
+    // learn a shirt fingerprint once (clean, non-overlapping frames only), then freeze it — no drift after swaps
     for (const [pi, di] of assigned) {
       const p = this.players[pi], d = dets[di];
-      if (!d.hist) continue;
-      const crowded = dets.some((o, oi) => oi !== di && iou(o.box, d.box) > 0.05);
-      if (crowded) continue;
-      if (!p.app) p.app = Float32Array.from(d.hist);
-      else for (let k = 0; k < 16; k++) p.app[k] += 0.03 * (d.hist[k] - p.app[k]);
+      if (p.appN >= APP_LEARN || !d.hist) continue;
+      if (dets.some((o, oi) => oi !== di && iou(o.box, d.box) > 0.02)) continue;
+      p.appSum ||= new Float32Array(16);
+      for (let k = 0; k < 16; k++) p.appSum[k] += d.hist[k];
+      if (++p.appN === APP_LEARN) p.app = p.appSum.map(v => v / APP_LEARN);
     }
     return this.players;
   }

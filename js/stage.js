@@ -16,18 +16,28 @@ export class Stage {
     this.labels = new Map();     // det index -> {name, color}
     this.onPickDet = null;
     this.drag = -1;
+    this.padPx = 0;
     canvas.addEventListener('pointerdown', e => this.down(e));
     canvas.addEventListener('pointermove', e => this.move(e));
     window.addEventListener('pointerup', () => { if (this.drag >= 0) { this.drag = -1; this.onChange?.(); } });
   }
 
-  get pad() { return this.mode === 'calibrate' && this.frame ? Math.round(0.12 * Math.max(this.frame.width, this.frame.height)) : 0; }
+  get pad() { return this.mode === 'calibrate' ? this.padPx : 0; }
+  // border wide enough for off-frame corners; only refit outside a drag so the canvas doesn't resize under the pointer
+  fitPad() {
+    const f = this.frame;
+    if (!f) return;
+    let need = 0.12 * Math.max(f.width, f.height);
+    for (const [x, y] of this.points) need = Math.max(need, -x, -y, x - f.width, y - f.height);
+    this.padPx = Math.round(need + 0.03 * f.height);
+  }
 
   setFrame(frame) {
     this.frame = frame;
+    this.fitPad();
     this.draw();
   }
-  setMode(mode) { this.mode = mode; this.draw(); }
+  setMode(mode) { this.mode = mode; this.fitPad(); this.draw(); }
 
   toImage(e) {
     const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / r.width;
@@ -41,7 +51,11 @@ export class Stage {
     if (this.mode === 'calibrate') {
       const i = this.points.findIndex(p => Math.hypot(p[0] - x, p[1] - y) < this.hitRadius());
       if (i >= 0) { this.drag = i; this.canvas.setPointerCapture(e.pointerId); return; }
-      if (this.points.length < 4) { this.points.push([x, y]); this.draw(); this.onChange?.(); }
+      if (this.points.length < 4) { this.points.push([x, y]); this.draw(); this.onChange?.(); return; }
+      // all 4 set: snap the nearest corner to the click and keep dragging it
+      let near = 0;
+      this.points.forEach((p, j) => { if (Math.hypot(p[0] - x, p[1] - y) < Math.hypot(this.points[near][0] - x, this.points[near][1] - y)) near = j; });
+      this.points[near] = [x, y]; this.drag = near; this.canvas.setPointerCapture(e.pointerId); this.draw();
     } else if (this.mode === 'assign') {
       let best = -1, area = Infinity;
       this.dets.forEach((d, i) => {
@@ -58,7 +72,7 @@ export class Stage {
   }
 
   undo() { this.points.pop(); this.draw(); this.onChange?.(); }
-  reset() { this.points = []; this.draw(); this.onChange?.(); }
+  reset() { this.points = []; this.fitPad(); this.draw(); this.onChange?.(); }
 
   court() {
     if (this.points.length !== 4) return null;

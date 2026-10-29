@@ -13,12 +13,14 @@ cd webapp && python3 -m http.server 8080      # or VS Code Live Server (127.0.0.
 ```
 Open in Chrome/Edge (needs WebGPU + WebCodecs; Safari not supported). `file://` does not work (ES modules, fetch of models).
 
-- Quick check: drop `../sample_video/กอล์ฟ หมู vs วา มาร์ค.mp4`, press "ทดสอบ 15 วินาที", render. Court corners for this file are preset.
+- Quick check: drop `../sample_video/กอล์ฟ หมู vs วา มาร์ค.mp4`, click the 4 court corners once (saved per file in localStorage), press "ทดสอบ 15 วินาที", render.
+  No player names or court corners are preset in code — players come from detection + the user's cards.
 - Debug: `window.__app` (state, stage, loadVideo, detectPlayers), `window.__lastResult` (blob + stats after render).
 - Tracking regression harness: `js/_diag.js` (dev only, not loaded by the app). In the console:
   `const m = await import('/js/_diag.js'); m.run({ start: 0, end: 180 })` → poll `window.__diag`
   (reports per-player net-crossing frames `flips` and same-side shirt-colour swaps `swaps`/`swapLog`).
-  Serve the video as `webapp/_full.mp4` for it; delete afterwards.
+  Serve the video as `webapp/_full.mp4` for it; delete afterwards. Players come from the saved config
+  (name the cards in the app first); pass `corners` for a clip other than the sample.
 
 ## Architecture
 
@@ -26,7 +28,7 @@ Open in Chrome/Edge (needs WebGPU + WebCodecs; Safari not supported). `file://` 
 index.html        UI shell + importmap (CDN libs pinned: onnxruntime-web@1.30.0, mediabunny@1.60.0)
 css/style.css     Dark navy UI; design tokens in :root; Kanit (UI/Thai) + Bebas Neue (numbers)
 js/app.js         UI controller: steps 1 วิดีโอ → 2 สนาม → 3 ผู้เล่น (cards) → 4 สร้างวิดีโอ; model loading; progress
-js/config.js      DEFAULT_CONFIG, PRESET_CORNERS (by file name + size), localStorage (key bhud.config.v2), import/export JSON
+js/config.js      DEFAULT_CONFIG (players: [] — never preset names), localStorage (key bhud.config.v3; v2 migrated minus players), corners per file, import/export JSON
 js/stage.js       Interactive canvas: 'calibrate' (click/drag 4 court corners, padded border for off-frame corners) / 'assign'
 js/court.js       Court model (13.4 × 6.1 m, net y=6.7), 4-point homography image↔court, court lines
 js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints). WebGPU → WASM fallback
@@ -56,7 +58,8 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **Court coords:** x = width 0..6.1 (left→right seen from the near baseline), y = 0 far baseline → 13.4 near baseline.
   `orientation: 'behind'` = corners clicked TL,TR,BR,BL map to far-left, far-right, near-right, near-left. `'side'` rotates.
 - **Players never cross the net** within a game: `PlayerTracker.onSide()` is a hard rule (0.6 m slack). End changes between games are NOT handled yet.
-- Same-side partners are separated by a 16-bin torso colour histogram (`torsoHist`); learned slowly (EMA 0.03) only when the player's box doesn't overlap others.
+- Same-side partners are separated by a 16-bin torso colour histogram (`torsoHist`). The fingerprint comes from the player card (`players[i].hist`, saved when the user names cards) or is averaged over the first 45 non-overlapping frames — then **frozen** (an EMA-updated model drifted after an overlap and locked in the swap). A detection that matches a same-side partner's shirt by > 0.12 is vetoed for this player, in both the known-ID and the distance steps.
+- Verified on the sample clip: old tracker put the two far-side players on the wrong person in ~60% of far-side frames; the frozen-fingerprint tracker had 0 wrong frames in the measured window. Ground truth used: far side = one white shirt, one navy shirt.
 - Foot point = ankle keypoints (conf > 0.35) else bbox bottom-centre. Tag anchor = bbox top-centre. Both EMA-smoothed (alphas tuned at 30 fps, `fpsAlpha` rescales).
 - **Shot speed is an estimate:** hitter→receiver court distance D over flight time T, drag-corrected
   `v0 = L(e^{D/L} − 1)/T`, `L = vt²/g`, vt = 7 m/s, exponent capped at 2.2, T ≥ 0.25 s, must cross the net. Image-space speed was tried and is useless for this camera angle (motion is mostly in depth).
