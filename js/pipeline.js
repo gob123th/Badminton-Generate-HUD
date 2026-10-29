@@ -57,6 +57,12 @@ class StatView {
 /**
  * opts: {vid, cfg, court, detector, shuttle (ShuttleTracker|null), seeds, start, end, canvas, fileHandle, onProgress, signal}
  */
+const boxIou = (a, b) => {
+  const iw = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), ih = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const inter = iw * ih;
+  return inter / ((a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter + 1e-9);
+};
+
 export async function renderVideo(opts) {
   const { vid, cfg, court, detector, shuttle, seeds, canvas, onProgress, signal } = opts;
   const W = vid.width, H = vid.height, fps = vid.fps;
@@ -93,6 +99,8 @@ export async function renderVideo(opts) {
   const stride = Math.max(1, cfg.model.stride | 0);
   const rois = court.farTiles(W, H);                  // zoomed passes for small far-side players
   const snaps = [], rawShuttle = [], boxes = [];
+  const others = [];            // per frame: boxes of people who are not our players (neighbouring courts, spectators)
+  let lastOthers = [];
   let n = 0, firstTs = null, canceled = false;
   const sink = new CanvasSink(vid.video, { poolSize: 2 });
   for await (const wc of sink.canvases(start, end)) {
@@ -103,6 +111,8 @@ export async function renderVideo(opts) {
     if (n % stride === 0) {
       const dets = await detector.detect(canvas, W, H, cfg.model.iou, rois);
       tracker.update(bt.update(dets), t, ctx);
+      const mine = tracker.players.filter(p => p.visible && p.box).map(p => p.box);
+      lastOthers = dets.filter(d => d.score >= cfg.model.conf && !mine.some(b => boxIou(b, d.box) > 0.5)).map(d => d.box);
       stats.update(tracker.players, t);
     }
     const ps = tracker.players;
@@ -118,6 +128,7 @@ export async function renderVideo(opts) {
       dets: cfg.render.showIds ? tracker.lastDets.map(d => ({ box: d.box, foot: d.foot, tid: d.tid })) : null,
     });
     boxes.push(ps.filter(p => p.visible && p.box).map(p => [...p.box, p.idx, p.pos[0], p.pos[1]]));
+    others.push(lastOthers);
     rawShuttle.push(null);
     if (useShuttle) for (const r of await shuttle.push(wc.canvas, n, W, H)) rawShuttle[r.frame] = r.pos;
     // live preview (players only; shuttle needs the whole trajectory first)
@@ -128,7 +139,7 @@ export async function renderVideo(opts) {
   if (canceled) return null;
   if (useShuttle) for (const r of await shuttle.flush(W, H)) rawShuttle[r.frame] = r.pos;
 
-  const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W }) : null;
+  const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W, others }) : null;
 
   // ---------------------------------------------------------- score: auto guess, then optional user review
   let score = null;
@@ -224,6 +235,7 @@ export async function renderVideo(opts) {
     },
     blob: null,
     analysis: an,   // debug: window.__lastResult.analysis (shuttle path, hits, rallies)
+    debug: { rawShuttle, boxes, others },   // inputs of analyzeShuttle, to replay rally.js offline in node
   };
   if (!writable) result.blob = new Blob([target.buffer], { type: 'video/mp4' });
   return result;

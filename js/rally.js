@@ -9,8 +9,10 @@ function zoneDist(x, y, b) {
 /**
  * raw: per-frame shuttle position [x,y] | null (full-res px)
  * boxes: per-frame [[x1,y1,x2,y2,playerIdx,courtX,courtY], ...]
+ * others: per-frame [[x1,y1,x2,y2], ...] people who are not our players (neighbouring courts); a shuttle nearer
+ *         to one of them than to our players is theirs
  */
-export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
+export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = [] } = {}) {
   const N = raw.length, k = width / 1280, f = fps / 30;
   const pos = raw.map(p => (p ? [...p] : null));
 
@@ -34,16 +36,53 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
     i = j;
   }
 
-  // 2b) drop flights that never pass a tracked player's racket zone: shuttles from neighbouring courts
-  //     (an image region can't separate them when one court's air overlaps the next court in the image)
+  // 2b) drop flights that don't belong to this court: shuttles from neighbouring courts (an image region can't
+  //     separate them when one court's air overlaps the next court in the image). A run (split at gaps and at
+  //     jumps no shuttle makes in one frame — TrackNet switching courts) is kept when it is in our players'
+  //     racket zones in more frames than in other people's (neighbouring courts; 1.2 box heights reached into
+  //     the next court for near players), or — if nobody else's — when it continues a kept run within 0.5 s
+  //     where that run's velocity predicts (mid-air parts after the shuttle was hidden by the hitter).
+  // frame i in a racket zone (0.6 box heights past the upper body ≈ arm + racket): +1 ours, -1 someone else's, 0 none
+  const zoneVote = i => {
+    const [x, y] = pos[i];
+    const d = Math.min(Infinity, ...(boxes[i] || []).map(b => zoneDist(x, y, b)));
+    const e = Math.min(Infinity, ...(others[i] || []).map(b => zoneDist(x, y, b)));
+    return d < 0.6 && d <= e ? 1 : e < 0.6 && e < d ? -1 : 0;
+  };
   if (boxes.some(f => f?.length)) {
+    const jump = 200 * k / f, runs = [];
     for (let i = 0; i < N; i++) {
       if (!pos[i]) continue;
-      let j = i, near = false;
-      for (; j < N && pos[j]; j++) near ||= (boxes[j] || []).some(b => zoneDist(pos[j][0], pos[j][1], b) < 1.2);
-      if (!near) for (let m = i; m < j; m++) pos[m] = null;
-      i = j;
+      let j = i, ours = 0, theirs = 0;
+      do {
+        const v = zoneVote(j);
+        if (v > 0) ours++; else if (v < 0) theirs++;
+        j++;
+      } while (j < N && pos[j] && hyp(pos[j][0] - pos[j - 1][0], pos[j][1] - pos[j - 1][1]) <= jump);
+      runs.push({ s: i, e: j - 1, keep: ours > theirs, theirs: theirs > ours });
+      i = j - 1;
     }
+    // velocity at a run end (px/frame) from its last / first few frames
+    const vel = (r, atEnd) => {
+      const a = atEnd ? Math.max(r.s, r.e - 3) : r.s, b = atEnd ? r.e : Math.min(r.e, r.s + 3);
+      return b > a ? [(pos[b][0] - pos[a][0]) / (b - a), (pos[b][1] - pos[a][1]) / (b - a)] : [0, 0];
+    };
+    const links = (from, to) => {        // from ends before to starts
+      const g = to.s - from.e;
+      if (g < 1 || g > 0.5 * fps) return false;
+      const tol = (40 + 15 * g / f) * k;
+      const v1 = vel(from, true), p1 = [pos[from.e][0] + v1[0] * g, pos[from.e][1] + v1[1] * g];
+      const v2 = vel(to, false), p2 = [pos[to.s][0] - v2[0] * g, pos[to.s][1] - v2[1] * g];
+      return hyp(p1[0] - pos[to.s][0], p1[1] - pos[to.s][1]) < tol || hyp(p2[0] - pos[from.e][0], p2[1] - pos[from.e][1]) < tol;
+    };
+    for (let changed = true; changed;) {
+      changed = false;
+      runs.forEach((r, n) => {
+        if (r.keep || r.theirs) return;
+        if ((runs[n - 1]?.keep && links(runs[n - 1], r)) || (runs[n + 1]?.keep && links(r, runs[n + 1]))) { r.keep = true; changed = true; }
+      });
+    }
+    for (const r of runs) if (!r.keep) for (let m = r.s; m <= r.e; m++) pos[m] = null;
   }
 
   // 3) hits: horizontal reversal, falling→rising (gravity can't do that), or a new flight appearing
@@ -62,7 +101,7 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
   const hits = [];
   for (const i of raw_hits) if (!hits.length || i - hits.at(-1).frame > 0.4 * fps) hits.push({ frame: i });
 
-  // 4) hitter = nearest player box (upper body / racket zone)
+  // 4) hitter = nearest player box (upper body / racket zone), unless someone else (another court) is nearer
   for (const h of hits) {
     const [x, y] = pos[h.frame];
     let best = null, bd = Infinity;
@@ -70,6 +109,7 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
       const d = zoneDist(x, y, b);
       if (d < bd) { bd = d; best = b; }
     }
+    if ((others[h.frame] || []).some(b => zoneDist(x, y, b) < bd)) best = null;
     h.player = best && bd < 1.5 ? (best[4] ?? null) : null;
     h.court = best && bd < 1.5 && best.length >= 7 ? [best[5], best[6]] : null;
     h.speed = null;

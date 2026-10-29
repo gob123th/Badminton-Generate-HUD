@@ -65,13 +65,19 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - Same-side partners are separated by a 16-bin torso colour histogram (`torsoHist`). The fingerprint comes from the player card (`players[i].hist`, saved when the user names cards) or is averaged over the first 45 non-overlapping frames — then **frozen** (an EMA-updated model drifted after an overlap and locked in the swap). A detection that matches a same-side partner's shirt by > 0.12 is vetoed for this player, in both the known-ID and the distance steps.
 - Verified on the sample clip: old tracker put the two far-side players on the wrong person in ~60% of far-side frames; the frozen-fingerprint tracker had 0 wrong frames in the measured window. Ground truth used: far side = one white shirt, one navy shirt.
 - **Far-side players are too small for the 640 px full-frame pass** (e.g. ~90 px tall in 720p → ~45 px → YOLO score < 0.1, both
-  far players missed). `Court.farTiles()` adds overlapping ~native-resolution tiles over the far half (≤ 4 tiles); `detect(…, rois)`
-  merges them by NMS and drops boxes cut by an inner tile edge. Costs ~1 + tiles inferences per detected frame.
+  far players missed). `Court.farTiles()` adds overlapping ~native-resolution tiles over the far-half band, full frame width
+  (≤ 4 tiles) so neighbouring-court people are found too; `detect(…, rois)` merges by NMS and drops boxes cut by an inner tile
+  edge. Costs 1 + tiles inferences per detected frame (720p: 1 + 3).
 - Foot point = ankle keypoints (conf > 0.35) else bbox bottom-centre. Tag anchor = bbox top-centre. Both EMA-smoothed (alphas tuned at 30 fps, `fpsAlpha` rescales).
 - **Shot speed is an estimate:** hitter→receiver court distance D over flight time T, drag-corrected
   `v0 = L(e^{D/L} − 1)/T`, `L = vt²/g`, vt = 7 m/s, exponent capped at 2.2, T ≥ 0.25 s, must cross the net. Image-space speed was tried and is useless for this camera angle (motion is mostly in depth).
-- **Neighbouring courts' shuttles:** TrackNet blobs are masked to `Court.airPolygon()` (floor + 8 m), and flight segments that never
-  pass a tracked player's racket zone are dropped. With an oblique camera the air polygon alone barely helps (it overlaps the next court).
+- **Neighbouring courts' shuttles:** TrackNet blobs are masked to `Court.airPolygon()` (floor + 8 m) — with an oblique camera that
+  barely helps. The real filter is in `analyzeShuttle` 2b: runs (split at gaps and at > 200 px/frame jumps = TrackNet switching
+  courts) are kept when the shuttle sits in our players' racket zones (0.6 bh) in more frames than in *other* people's
+  (`others` = detections that aren't our players, from pass 1); unclaimed mid-air runs are kept if they continue a kept run
+  within 0.5 s along its velocity. Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip 200–240 s. Known loss: the apex of a
+  high lob after TrackNet lost the rise (> 0.5 s) is dropped (HUD trail only; hits/score unaffected).
+  Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others}` to replay rally.js variants in the page or node.
 - **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot (the last
   position is on the floor, so the homography is valid), else last hitter loses. Serve-court parity (right court ⇔ even score)
   flags missed points. Everything depends on rally splitting — always offer the review step; it is an estimate.

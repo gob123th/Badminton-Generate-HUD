@@ -84,18 +84,19 @@ export class Court {
     return x >= -m && x <= COURT_W + m && y >= -m && y <= COURT_L + m;
   }
   /**
-   * Overlapping image tiles [x, y, w, h] over the far half (+ room for a standing player above the baseline),
-   * detected near native resolution: far players are ~45 px tall after the 640 px full-frame downscale and
-   * YOLO misses them. [] when the region is off-frame.
+   * Overlapping image tiles [x, y, w, h] over the band of the far half (+ room for a standing player above the
+   * baseline), detected near native resolution: far players are ~45 px tall after the 640 px full-frame downscale
+   * and YOLO misses them. The band spans the full frame width so people on neighbouring courts are found too —
+   * analyzeShuttle() uses them to reject their shuttles. [] when the region is off-frame.
    */
   farTiles(W, H, size = 640, maxTiles = 4) {
     const m = this.margin, pts = [[-m, -m], [COURT_W + m, -m], [COURT_W + m, NET_Y + 1], [-m, NET_Y + 1]].map(p => this.toImg(...p));
     if (!pts.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))) return [];
     const tall = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / (COURT_W + 2 * m) * 2.4;   // ~2.4 m in px at the far baseline
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const x1 = Math.max(0, Math.min(...xs) - tall * 0.4), x2 = Math.min(W, Math.max(...xs) + tall * 0.4);
+    const x1 = 0, x2 = W;
     const y1 = Math.max(0, Math.min(...ys) - tall), y2 = Math.min(H, Math.max(...ys) + tall * 0.2);
-    if (x2 - x1 < 16 || y2 - y1 < 16) return [];
+    if (y2 - y1 < 16 || Math.max(...xs) < 0 || Math.min(...xs) > W) return [];
     const ov = Math.min(Math.max(tall * 0.5, 64), 200);   // > a player's width, so everyone is whole in some tile
     const starts = (a, b, s) => {
       if (b - a <= s) return [a];
