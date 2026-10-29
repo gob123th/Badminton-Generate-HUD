@@ -10,7 +10,7 @@ import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker } from './players.js';
 import { StatsTracker } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
-import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore } from './rally.js';
+import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights } from './rally.js';
 import { t } from './i18n.js';
 
 export async function openVideo(file) {
@@ -70,8 +70,9 @@ export async function renderVideo(opts) {
   const totalFrames = Math.max(1, Math.round((end - start) * fps));
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
-  const hud = new HudRenderer(cfg, court, W, H);
-  await hud.ready;
+  const hud = new HudRenderer(cfg, court, W, H, { stage: 'overlay' });   // pass-1 live preview: over the video
+  const hudOut = new HudRenderer(cfg, court, W, H);                       // pass 2: the chosen stage (maybe inset)
+  await Promise.all([hud.ready, hudOut.ready]);
   const useShuttle = !!shuttle && cfg.render.shuttle;
   const P1 = useShuttle ? 0.72 : 0.62;                  // progress share of pass 1
   const t0 = performance.now();
@@ -143,6 +144,7 @@ export async function renderVideo(opts) {
 
   // ---------------------------------------------------------- score: auto guess, then optional user review
   let score = null;
+  const skip = new Set();         // rallies the user marked "not a point" (passing the shuttle over, …): no highlight
   if (an && cfg.score?.enabled) {
     const sctx = scoreContext(cfg.players, (x, y) => court.toCourt(x, y));
     const auto = autoWinners(an, sctx);
@@ -150,6 +152,7 @@ export async function renderVideo(opts) {
     if (opts.review) {
       picked = await opts.review({ an, auto, ctx: sctx, start: cfg.score.start, time: f => start + snaps[Math.min(f, snaps.length - 1)].t });
       if (!picked || signal?.aborted) return null;
+      picked.winners.forEach((w, i) => { if (!w) skip.add(i); });
     }
     score = buildScore(an, picked.winners, picked.extras, cfg.score.start, sctx);
     score.auto = auto;
@@ -157,8 +160,9 @@ export async function renderVideo(opts) {
   }
 
   // ---------------------------------------------------------- pass 2: render + encode
-  const bitrate = bitrateFor(W, H, fps);
-  const codec = await pickCodec(W, H, bitrate);
+  canvas.width = hudOut.OW; canvas.height = hudOut.OH;
+  const bitrate = bitrateFor(hudOut.OW, hudOut.OH, fps);
+  const codec = await pickCodec(hudOut.OW, hudOut.OH, bitrate);
   const writable = opts.fileHandle ? await opts.fileHandle.createWritable() : null;
   const target = writable ? new StreamTarget(writable, { chunked: true }) : new BufferTarget();
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: writable ? false : 'in-memory' }), target });
@@ -174,6 +178,26 @@ export async function renderVideo(opts) {
     const first = (await aSink.getPacket(start)) || (await aSink.getFirstPacket());
     aIter = first ? aSink.packets(first) : null;
   }
+  // highlight reel: a second, in-memory output fed with the same rendered frames inside the picked rallies
+  let hl = null;
+  const clips = an && cfg.highlight?.enabled ? pickHighlights(an, { count: cfg.highlight.count, fps, skip }) : [];
+  if (clips.length) {
+    const hTarget = new BufferTarget();
+    const hOut = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: hTarget });
+    const hSrc = new CanvasSource(canvas, { codec, bitrate, keyFrameInterval: 2 });
+    hOut.addVideoTrack(hSrc, { frameRate: fps });
+    let hAud = null;
+    if (aSrc) { hAud = new EncodedAudioPacketSource(vid.audioCodec); hOut.addAudioTrack(hAud); }
+    let at = 0;                   // where each clip starts in the reel (s)
+    const spans = clips.map((c, k) => {
+      const t0 = snaps[c.start].t, t1 = snaps[Math.min(c.end, snaps.length - 1)].t + 1 / fps;
+      const sp = { ...c, index: k + 1, total: clips.length, t0, t1, at };
+      at += t1 - t0;
+      return sp;
+    });
+    hl = { target: hTarget, out: hOut, src: hSrc, aud: hAud, spans, metaSent: false, duration: at };
+    await hOut.start();
+  }
   await output.start();
   const pumpAudio = async upTo => {
     while (aIter) {
@@ -182,6 +206,8 @@ export async function renderVideo(opts) {
       if (aNext.timestamp > upTo) return;
       const ts = aNext.timestamp - start;
       if (ts >= 0) { await aSrc.add(aNext.clone({ timestamp: ts }), aMetaSent ? undefined : { decoderConfig: aConfig }); aMetaSent = true; }
+      const sp = hl?.aud && hl.spans.find(c => ts >= c.t0 && ts < c.t1);
+      if (sp) { await hl.aud.add(aNext.clone({ timestamp: sp.at + ts - sp.t0 }), hl.metaSent ? undefined : { decoderConfig: aConfig }); hl.metaSent = true; }
       aNext = null;
     }
   };
@@ -193,20 +219,27 @@ export async function renderVideo(opts) {
       if (signal?.aborted) { canceled = true; break; }
       if (m >= snaps.length) break;
       const snap = snaps[m];
-      ctx.drawImage(wc.canvas, 0, 0, W, H);
-      hud.render(ctx, { ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, m, fps) : null });
+      hudOut.drawBase(ctx, wc.canvas);
+      hudOut.render(ctx, { ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, m, fps) : null });
       await pumpAudio(wc.timestamp + 0.5);
       await vSrc.add(snap.t, wc.duration || 1 / fps);
+      const sp = hl?.spans.find(c => m >= c.start && m <= c.end);
+      if (sp) {                   // CanvasSource.add captured the main frame already; add the banner/fade on top
+        hudOut.highlight(ctx, sp, snap.t - sp.t0, sp.t1 - snap.t - 1 / fps);
+        await hl.src.add(sp.at + snap.t - sp.t0, wc.duration || 1 / fps);
+      }
       m++;
       report('render', P1 + (m / snaps.length) * (1 - P1), { frame: m, total: snaps.length });
     }
   } catch (e) {
     await output.cancel().catch(() => {});
+    await hl?.out.cancel().catch(() => {});
     throw e;
   }
-  if (canceled) { await output.cancel(); return null; }
+  if (canceled) { await output.cancel(); await hl?.out.cancel(); return null; }
   await pumpAudio(end);
   await output.finalize();
+  await hl?.out.finalize();
 
   const names = cfg.players.map(p => p.name);
   const result = {
@@ -225,6 +258,7 @@ export async function renderVideo(opts) {
         })),
         shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed).rank : null })),
       } : null,
+      highlight: hl ? hl.spans.map(c => ({ clip: c.index, start_s: +(start + c.t0).toFixed(2), duration_s: +(c.t1 - c.t0).toFixed(2), rallies: c.rallies.map(i => i + 1), shots: c.shots, max_speed_kmh_est: c.top })) : null,
       score: score ? {
         start: { ...cfg.score.start }, final: score.final,
         points: score.rows.map(r => ({
@@ -234,6 +268,7 @@ export async function renderVideo(opts) {
       } : null,
     },
     blob: null,
+    highlight: hl ? { blob: new Blob([hl.target.buffer], { type: 'video/mp4' }), clips: hl.spans.length, duration_s: +hl.duration.toFixed(1) } : null,
     analysis: an,   // debug: window.__lastResult.analysis (shuttle path, hits, rallies)
     debug: { rawShuttle, boxes, others },   // inputs of analyzeShuttle, to replay rally.js offline in node
   };

@@ -187,3 +187,13 @@ button.danger:hover:not(:disabled) { border-color: var(--pink); color: var(--pin
 .review-final { font: 22px/1.2 "Bebas", sans-serif; letter-spacing: 1px; margin-bottom: 8px; }
 .clip-src { position: absolute; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; left: 0; top: 0; }
 #out { cursor: pointer; }
+
+.style-opts { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+.style-opts .row > label { flex: 1; min-width: 120px; }
+.team-colors { display: flex; gap: 10px; }
+.team-colors[hidden] { display: none; }
+.team-colors label.inline { margin: 0 0 6px; }
+.team-colors input[type=color] { width: 30px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.hl-opts { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+.hl-opts .row label { flex: 1; }
+.hl-opts.off .row { opacity: 0.45; pointer-events: none; }

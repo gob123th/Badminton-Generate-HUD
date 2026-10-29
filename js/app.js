@@ -5,7 +5,7 @@ import { ShuttleTracker } from './shuttle.js';
 import { footPoint, torsoHist, similarity } from './players.js';
 import { Court } from './court.js';
 import { Stage } from './stage.js';
-import { loadFonts } from './hud.js';
+import { loadFonts, layoutKey } from './hud.js';
 import { buildScore } from './rally.js';
 import { ClipPlayer } from './clip.js';
 import { LayoutEditor } from './layout.js';
@@ -239,16 +239,34 @@ function syncControls() {
   $('score-on').checked = !!state.cfg.score.enabled;
   $('score-review').checked = !!state.cfg.score.review;
   $('score-a').value = state.cfg.score.start.A; $('score-b').value = state.cfg.score.start.B;
+  const r = state.cfg.render;
+  $('stage-mode').value = r.stage; $('theme').value = r.theme; $('frame').value = r.frame; $('ring-style').value = r.ringStyle; $('ring-color').value = r.ringColor;
+  for (const k of ['A', 'B']) $('tc-' + k).value = r.teamColors[k];
+  $('hl-on').checked = !!state.cfg.highlight.enabled; $('hl-count').value = String(state.cfg.highlight.count);
   syncScoreOpts();
 }
-const syncScoreOpts = () => $('score-on').closest('.score-opts').classList.toggle('off', !state.cfg.score.enabled || !state.cfg.render.shuttle);
+const syncScoreOpts = () => {
+  $('score-on').closest('.score-opts').classList.toggle('off', !state.cfg.score.enabled || !state.cfg.render.shuttle);
+  $('hl-on').closest('.hl-opts').classList.toggle('off', !state.cfg.highlight.enabled || !state.cfg.render.shuttle);
+  $('team-colors').hidden = state.cfg.render.ringColor !== 'team';
+};
 for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
 $('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
 $('btn-layout-reset').onclick = () => {
-  state.cfg.render.layout = { topHud: null, playerPanel: null, courtMap: null };
+  state.cfg.render[layoutKey(state.cfg.render.stage)] = { topHud: null, playerPanel: null, courtMap: null };   // this stage only
   save(); if (layoutEd.active) openLayout();
 };
 $('score-review').onchange = e => { state.cfg.score.review = e.target.checked; save(); };
+// HUD style: theme / floor ring (the step-4 preview redraws live)
+const setRender = (k, v) => { state.cfg.render[k] = v; save(); syncScoreOpts(); layoutEd.draw(); };
+$('theme').onchange = e => setRender('theme', e.target.value);
+$('stage-mode').onchange = e => { setRender('stage', e.target.value); if (layoutEd.active) openLayout(); };   // canvas size changes
+$('frame').onchange = e => setRender('frame', e.target.value);
+$('ring-style').onchange = e => setRender('ringStyle', e.target.value);
+$('ring-color').onchange = e => setRender('ringColor', e.target.value);
+for (const k of ['A', 'B']) $('tc-' + k).oninput = e => { state.cfg.render.teamColors[k] = e.target.value.toUpperCase(); save(); layoutEd.draw(); };
+$('hl-on').onchange = e => { state.cfg.highlight.enabled = e.target.checked; save(); syncScoreOpts(); };
+$('hl-count').onchange = e => { state.cfg.highlight.count = +e.target.value; save(); };
 for (const k of ['A', 'B']) $('score-' + k.toLowerCase()).onchange = e => { state.cfg.score.start[k] = Math.max(0, Math.round(+e.target.value || 0)); e.target.value = state.cfg.score.start[k]; save(); };
 $('model').onchange = e => { state.cfg.model.file = e.target.value; save(); };
 $('stride').onchange = e => { state.cfg.model.stride = +e.target.value; save(); };
@@ -486,11 +504,13 @@ $('btn-render').onclick = async () => {
     const dl = $('downloads');
     const base = state.vid.file.name.replace(/\.[^.]+$/, '') + '_hud';
     if (res.blob) dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(res.blob), download: base + '.mp4', className: 'button primary', textContent: t('download') }));
+    if (res.highlight) dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(res.highlight.blob), download: base + '_highlight.mp4', className: 'button', textContent: t('dlHighlight') }));
     const js = new Blob([JSON.stringify(res.stats, null, 2)], { type: 'application/json' });
     dl.appendChild(Object.assign(document.createElement('a'), { href: URL.createObjectURL(js), download: base + '.stats.json', className: 'button', textContent: '⬇ stats.json' }));
     const sh = res.stats.shuttle, scf = res.stats.score?.final;
     setStatus('render-status', () => t('done', { n: res.frames, codec: res.codec.toUpperCase() }) + (fileHandle ? t('doneSaved') : '')
-      + (scf ? t('doneScore', { a: scf.A, b: scf.B }) : '') + (sh ? t('doneShuttle', { r: sh.rallies.length, s: sh.shots.length }) : ''), 'ok');
+      + (scf ? t('doneScore', { a: scf.A, b: scf.B }) : '') + (sh ? t('doneShuttle', { r: sh.rallies.length, s: sh.shots.length }) : '')
+      + (res.highlight ? t('doneHighlight', { n: res.highlight.clips, s: res.highlight.duration_s }) : ''), 'ok');
     setTitle(() => t('title.result'));
     window.__lastResult = res;
     toast(t('doneToast'));

@@ -23,6 +23,21 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     for (let j = i - 2; j <= i + 2; j++) if (j !== i && j >= 0 && j < N && raw[j] && hyp(raw[j][0] - raw[i][0], raw[j][1] - raw[i][1]) < 90 * k * Math.abs(j - i) / f) nb++;
     if (!nb) pos[i] = null;
   }
+  // 1b) drop still blobs. A shuttle in play never stays put: TrackNet also locks onto static spots (a net-post top, a
+  //     wall sign) for a few frames at a time, again and again at the same pixel, and onto a shuttle lying on the floor
+  //     or held before the serve. A still run (≥ 4 frames within R px) is dropped when it lasts ≥ 0.5 s, or when
+  //     still runs recur at the same spot at ≥ 2 other times (> 1 s apart)
+  const R = 4 * k, runs0 = [];
+  for (let i = 0; i < N; i++) {
+    if (!raw[i]) continue;
+    let j = i + 1;
+    while (j < N && raw[j] && hyp(raw[j][0] - raw[i][0], raw[j][1] - raw[i][1]) < R) j++;
+    if (j - i >= Math.round(4 * f)) { runs0.push({ s: i, e: j - 1, p: raw[i] }); i = j - 1; }
+  }
+  for (const r of runs0) {
+    const again = runs0.filter(o => o !== r && Math.abs(o.s - r.s) > fps && hyp(o.p[0] - r.p[0], o.p[1] - r.p[1]) < 2 * R).length;
+    if (r.e - r.s + 1 >= 0.5 * fps || again >= 2) for (let m = r.s; m <= r.e; m++) pos[m] = null;
+  }
   // 2) fill gaps up to 5 frames (scaled by fps)
   const maxGap = Math.round(5 * f);
   for (let i = 1; i < N; i++) {
@@ -95,7 +110,16 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     const a = vel(i - w, i), b = vel(i, i + w);
     let hit = false;
     if (a && b) hit = (a[0] * b[0] < 0 && Math.abs(a[0]) > vt && Math.abs(b[0]) > vt) || (a[1] > (vt * 2) / 3 && b[1] < -vt);
-    else if (!pos[i - 1] && !pos[i - 2]) { hit = true; for (let m = 1; m <= Math.round(5 * f); m++) if (!pos[i + m]) hit = false; }
+    else if (!pos[i - 1] && !pos[i - 2]) {
+      // a new flight appearing counts only if it leaves fast or rising: a racket sends it away. Re-acquired mid-air
+      // (lost at the top of a lob, then found falling slowly) or a static blob (lying shuttle, white object) is not a hit
+      const m = Math.round(5 * f);
+      hit = true; for (let j = 1; j <= m; j++) if (!pos[i + j]) hit = false;
+      if (hit) {
+        const v = vel(i, i + m);
+        hit = hyp(v[0], v[1]) >= 2 * vt || v[1] <= -vt;
+      }
+    }
     if (hit) raw_hits.push(i);
   }
   const hits = [];
@@ -143,6 +167,30 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     return { start: r.hits[0].frame, end: Math.max(end, last + Math.round(0.5 * fps)), hits: r.hits };
   });
   return { pos, hits, rallies: out };
+}
+
+/**
+ * Highlight reel: the `count` most exciting rallies (shots + top speed / 40), in time order, padded by `pad` s and
+ * merged where they touch. count 0 = all. skip: rally indices to leave out (marked "not a point" in the review).
+ * Returns [{start, end (frames), rallies: [i], shots, top (km/h | null)}].
+ */
+export function pickHighlights(an, { count = 5, fps = 30, pad = 1, skip = new Set() } = {}) {
+  const N = an.pos.length, p = Math.round(pad * fps);
+  const picked = an.rallies
+    .map((r, i) => ({ i, r, top: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null }))
+    .filter(c => !skip.has(c.i))
+    .sort((a, b) => b.r.hits.length + (b.top || 0) / 40 - (a.r.hits.length + (a.top || 0) / 40))
+    .slice(0, count > 0 ? count : Infinity)
+    .sort((a, b) => a.i - b.i);
+  const clips = [];
+  for (const c of picked) {
+    const start = Math.max(0, c.r.start - p), end = Math.min(N - 1, c.r.end + p), last = clips.at(-1);
+    if (last && start <= last.end) {
+      last.end = Math.max(last.end, end); last.rallies.push(c.i); last.shots += c.r.hits.length;
+      last.top = Math.max(last.top || 0, c.top || 0) || null;
+    } else clips.push({ start, end, rallies: [c.i], shots: c.r.hits.length, top: c.top });
+  }
+  return clips;
 }
 
 /** HUD state for frame i. */

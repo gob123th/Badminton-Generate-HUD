@@ -112,6 +112,57 @@
           <label><input type="checkbox" id="r-shuttle"> <span data-i18n="opt.shuttle"></span></label>
           <label><input type="checkbox" id="r-showIds"> <span data-i18n="opt.showIds"></span></label>
         </div>
+        <div class="style-opts">
+          <div class="row">
+            <label><span data-i18n="stage"></span>
+              <select id="stage-mode">
+                <option value="overlay" data-i18n="stage.overlay"></option>
+                <option value="landscape" data-i18n="stage.landscape"></option>
+                <option value="portrait" data-i18n="stage.portrait"></option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label><span data-i18n="theme"></span>
+              <select id="theme">
+                <option value="broadcast" data-i18n="theme.broadcast"></option>
+                <option value="esports" data-i18n="theme.esports"></option>
+                <option value="gold" data-i18n="theme.gold"></option>
+                <option value="volt" data-i18n="theme.volt"></option>
+                <option value="light" data-i18n="theme.light"></option>
+              </select>
+            </label>
+            <label><span data-i18n="frame"></span>
+              <select id="frame">
+                <option value="angled" data-i18n="frame.angled"></option>
+                <option value="rounded" data-i18n="frame.rounded"></option>
+                <option value="tech" data-i18n="frame.tech"></option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label><span data-i18n="ring.style"></span>
+              <select id="ring-style">
+                <option value="neon" data-i18n="ring.neon"></option>
+                <option value="solid" data-i18n="ring.solid"></option>
+                <option value="minimal" data-i18n="ring.minimal"></option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label><span data-i18n="ring.color"></span>
+              <select id="ring-color">
+                <option value="player" data-i18n="ring.byPlayer"></option>
+                <option value="team" data-i18n="ring.byTeam"></option>
+                <option value="theme" data-i18n="ring.byTheme"></option>
+              </select>
+            </label>
+            <span id="team-colors" class="team-colors">
+              <label class="inline">A <input type="color" id="tc-A"></label>
+              <label class="inline">B <input type="color" id="tc-B"></label>
+            </span>
+          </div>
+        </div>
         <p class="hint" data-i18n="layout.hint"></p>
         <div class="row"><button class="ghost" id="btn-layout-reset" data-i18n="layout.reset"></button></div>
         <div class="score-opts">
@@ -121,6 +172,17 @@
             <label><span data-i18n="score.startB"></span><input type="number" id="score-b" min="0" max="30" step="1"></label>
           </div>
           <label class="inline"><input type="checkbox" id="score-review"> <span data-i18n="score.review"></span></label>
+        </div>
+        <div class="hl-opts">
+          <label class="inline"><input type="checkbox" id="hl-on"> <span data-i18n="hl.on"></span></label>
+          <div class="row">
+            <label><span data-i18n="hl.count"></span>
+              <select id="hl-count">
+                <option value="3">3</option><option value="5">5</option><option value="8">8</option>
+                <option value="0" data-i18n="hl.all"></option>
+              </select>
+            </label>
+          </div>
         </div>
         <label class="inline"><input type="checkbox" id="save-direct" checked> <span data-i18n="saveDirect"></span></label>
         <div class="row">

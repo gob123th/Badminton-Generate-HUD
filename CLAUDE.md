@@ -39,7 +39,9 @@ js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
 js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
 js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON (no trail),
-                  speed badge with game-style rank (SPEED_RANKS: C/B/A/S/SS, EST.)
+                  speed badge with game-style rank (SPEED_RANKS: C/B/A/S/SS, EST.), highlight banner.
+                  Style from cfg.render: theme (THEMES), frame (angled/rounded/tech via frame()/frameFill()/corners()),
+                  ringStyle (neon/solid/minimal), ringColor (player/team/theme + teamColors)
 js/layout.js      LayoutEditor (step 4): drag HUD panels to move, corner handle to resize → cfg.render.layout {x, y, scale}
 js/clip.js        ClipPlayer: plays a span of the source video on a canvas with an overlay (score review: watch a rally)
 js/pipeline.js    openVideo/grabFrame + renderVideo(): pass 0 bg median → pass 1 analyze → rally analysis → pass 2 render+encode
@@ -55,9 +57,20 @@ fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/number
    Scoring: `autoWinners` → optional `opts.review` (app pauses the pipeline, user fixes winners / adds missed points) → `buildScore` timeline.
 4. **Pass 2** – decode again, draw HUD from snapshot[i] + `shuttleStateAt(i)`, encode via mediabunny `CanvasSource`;
    audio packets are copied, not re-encoded. Output: StreamTarget to a file handle (File System Access) or BufferTarget blob.
+   Highlight reel (`cfg.highlight`): `pickHighlights` (rally.js) picks the top rallies (shots + top speed), padded 1 s and
+   merged; pass 2 feeds the same rendered frames inside those spans (+ their audio packets, re-timed) to a second in-memory
+   Output, with `hud.highlight()` banner/fade drawn *after* the main CanvasSource.add (which captures synchronously).
+   Rallies marked "not a point" in the review are skipped.
 
-Panel placement goes through `HudRenderer.rect(name)` (default spot or `cfg.render.layout`, scale via `scaleOf`) — draw code and
+Panel placement goes through `HudRenderer.rect(name)` (default spot or the stage's layout, scale via `scaleOf`) — draw code and
 the layout editor must both use it.
+
+Output stage (`cfg.render.stage`): 'overlay' (HUD on the video), 'landscape' (16:9, video inset top-left, panels around it) or
+'portrait' (9:16, width = video height). `HudRenderer.geometry()` gives the output size `OW × OH` and the video rect; in-video
+elements (rings, tags, LOCK ON, speed badge) are drawn through `inVideo()` (transform + clip), panels in output pixels,
+`drawBase()` draws the frame + themed background. Each stage has its own layout (`layoutKey(stage)` → `layout` /
+`layoutLandscape` / `layoutPortrait`). Pass 1's live preview always uses 'overlay' (the canvas is the video for detection);
+pass 2 resizes the canvas to `OW × OH` before creating the encoder.
 
 HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`) — keep pass 1 state out of it.
 
@@ -89,7 +102,11 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   ± 2 m — a mid-air last point (lost track / static false blob) mapped to 32 m and handed the point to the team that hit it out.
   With a known last hitter: own side (didn't cross) or out → hitter loses; inside the other half → hitter wins. Serve-court parity (right court ⇔ even score)
   flags missed points. Everything depends on rally splitting — always offer the review step; it is an estimate.
-- **Hits** = horizontal velocity reversal, or falling→rising (gravity can't do that), or a new flight appearing; dedupe 0.4 s. Rally = hits chained < 4 s apart with no shuttle loss > 1 s between them, ≥ 2 hits
+- **Still blobs are not the shuttle:** TrackNet locks onto static spots (net-post top, wall sign) for a few frames at a
+  time, recurring at the same pixel; also a lying/held shuttle. `analyzeShuttle` 1b drops still runs (≥ 4 frames within
+  4 px) lasting ≥ 0.5 s or recurring at the same spot ≥ 2 other times. Verified by eye on "หมู มาย…" (516,386 = net post).
+- **Hits** = horizontal velocity reversal, or falling→rising (gravity can't do that), or a new flight appearing *that leaves
+  fast or rising* (a lob re-acquired mid-air, falling slowly, gave a fake hit + speed badge); dedupe 0.4 s. Rally = hits chained < 4 s apart with no shuttle loss > 1 s between them, ≥ 2 hits
   (without the loss rule, casual hits between points chained a whole 40 s clip into one rally).
 - Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.
 - Models > 30 MB must be split for some transfer tools; GitHub accepts ≤ 100 MB per file. Don't ship zips without `models/`.

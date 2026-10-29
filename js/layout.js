@@ -1,6 +1,7 @@
-// Step-4 HUD layout editor: drag panels to move them, drag the corner handle to resize. Draws on a canvas over a
-// video frame with sample data; writes cfg.render.layout[name] = {x, y (top-left, fractions of the frame), scale}.
-import { HudRenderer } from './hud.js';
+// Step-4 HUD layout editor: drag panels to move them, drag the corner handle to resize. Draws the output canvas
+// (video frame, inset for the 16:9 / 9:16 stages) with sample data; writes cfg.render[layoutKey(stage)][name] =
+// {x, y (top-left, fractions of the output), scale}.
+import { HudRenderer, layoutKey } from './hud.js';
 
 const NAMES = ['topHud', 'playerPanel', 'courtMap'];
 const HANDLE = 0.035;            // corner handle size, fraction of the frame height
@@ -23,8 +24,8 @@ export class LayoutEditor {
   async open(frame, cfg, court) {
     this.frame = frame; this.cfg = cfg; this.court = court;
     const c = this.canvas;
-    c.width = frame.width; c.height = frame.height;
-    this.hud = new HudRenderer(cfg, court, c.width, c.height);
+    this.hud = new HudRenderer(cfg, court, frame.width, frame.height);
+    c.width = this.hud.OW; c.height = this.hud.OH;
     await this.hud.ready;
     this.active = true;
     c.style.touchAction = 'none';
@@ -32,6 +33,8 @@ export class LayoutEditor {
   }
   close() { this.active = false; this.drag = null; this.canvas.style.touchAction = ''; this.canvas.style.cursor = ''; }
 
+  /** this stage's layout object in the config (created on first drag) */
+  layout() { const k = layoutKey(this.hud.stage); return (this.cfg.render[k] ||= { topHud: null, playerPanel: null, courtMap: null }); }
   get scoring() { return !!(this.cfg.score?.enabled && this.cfg.render.shuttle); }
   rect(name) { return this.hud.rect(name, this.cfg.players.length, this.scoring ? 4 : 3); }   // 4 top panels with SCORE
   /** panels that are switched on, with their rectangles */
@@ -43,13 +46,15 @@ export class LayoutEditor {
   draw() {
     if (!this.active) return;
     const g = this.ctx, W = this.canvas.width, H = this.canvas.height, u = H / 720;
-    g.drawImage(this.frame, 0, 0, W, H);
-    g.fillStyle = 'rgba(4,10,24,0.35)'; g.fillRect(0, 0, W, H);
+    this.hud.drawBase(g, this.frame);
+    const [vx, vy, vw, vh] = this.hud.video;
+    g.fillStyle = 'rgba(4,10,24,0.35)'; g.fillRect(vx, vy, vw, vh);
     // sample data: names/colours/avatars from the cards, seeds on the court map, a 0-0 score when scoring is on
     const players = this.cfg.players.map((p, i) => ({ idx: i, name: p.name, color: p.color, team: p.team, pos: p.seed || null, head: null, show: true }));
     const stats = { distance: () => 0, stamina: () => 100, staminaFrac: () => 1 };
     const sh = { rallyTime: null, rallyCount: null, lastSpeed: null, live: false, score: this.scoring ? { A: 0, B: 0 } : null };
     const r = this.cfg.render;
+    if (this.court) this.hud.inVideo(g, v => { for (const p of players) if (p.pos) this.hud.ring(v, p, 0.4); });   // ring preview
     if (r.topHud) this.hud.topHud(g, sh, false);
     if (r.playerPanel) this.hud.playerPanel(g, players, stats);
     if (r.courtMap && this.court) this.hud.courtMap(g, players.filter(p => p.pos));
@@ -93,7 +98,7 @@ export class LayoutEditor {
     if (!this.active) return;
     const p = this.point(e);
     if (!this.drag) { const h = this.hit(p); this.canvas.style.cursor = h ? (h.resize ? 'nwse-resize' : 'move') : ''; return; }
-    const d = this.drag, W = this.canvas.width, H = this.canvas.height, lay = this.cfg.render.layout;
+    const d = this.drag, W = this.canvas.width, H = this.canvas.height, lay = this.layout();
     const cur = lay[d.name] || {};
     if (d.resize) {
       const scale = Math.min(Math.max(d.scale * (d.w + p[0] - d.start[0]) / d.w, 0.4), 2.5);
@@ -106,7 +111,7 @@ export class LayoutEditor {
   up() {
     if (!this.drag) return;
     const name = this.drag.name, [x, y] = this.rect(name);   // store the clamped position
-    const lay = this.cfg.render.layout;
+    const lay = this.layout();
     if (lay[name]) { lay[name].x = +(x / this.canvas.width).toFixed(4); lay[name].y = +(y / this.canvas.height).toFixed(4); }
     this.drag = null;
     this.draw();
