@@ -8,6 +8,7 @@ import { Stage } from './stage.js';
 import { loadFonts } from './hud.js';
 import { buildScore } from './rally.js';
 import { ClipPlayer } from './clip.js';
+import { LayoutEditor } from './layout.js';
 import { t, setLang, getLang, onLangChange, applyI18n } from './i18n.js';
 
 const $ = id => document.getElementById(id);
@@ -19,6 +20,7 @@ const state = {
   dets: [], hl: -1, busy: false, abort: null,
 };
 const stage = new Stage($('stage'), { onChange: onCourtChange });
+const layoutEd = new LayoutEditor($('out'), () => save());
 
 // ------------------------------------------------------------------ helpers
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -47,11 +49,18 @@ function activate(step) {
   state.step = step;
   if (state.busy) return;
   setTitle(() => t(state.vid ? `title.${step}` : 'title.empty'));
-  const showOut = step === 'render' && $('out').width > 0 && !$('out').hidden;
-  if (!showOut && state.frame) {
+  if (step === 'render' && state.frame) { openLayout(); return; }   // step 4: drag / resize the HUD panels
+  layoutEd.close();
+  if (state.frame) {
     $('stage').hidden = false; $('out').hidden = true;
     stage.setMode(step === 'players' ? 'assign' : 'calibrate');
   }
+}
+async function openLayout() {
+  $('stage').hidden = true; $('out').hidden = false;
+  await state.fontsReady;
+  await layoutEd.open(state.frame, state.cfg, stage.court());
+  setTitle(() => t('title.layout'));
 }
 
 // ------------------------------------------------------------------ capability badge
@@ -233,8 +242,12 @@ function syncControls() {
   syncScoreOpts();
 }
 const syncScoreOpts = () => $('score-on').closest('.score-opts').classList.toggle('off', !state.cfg.score.enabled || !state.cfg.render.shuttle);
-for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); };
-$('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); };
+for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
+$('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
+$('btn-layout-reset').onclick = () => {
+  state.cfg.render.layout = { topHud: null, playerPanel: null, courtMap: null };
+  save(); if (layoutEd.active) openLayout();
+};
 $('score-review').onchange = e => { state.cfg.score.review = e.target.checked; save(); };
 for (const k of ['A', 'B']) $('score-' + k.toLowerCase()).onchange = e => { state.cfg.score.start[k] = Math.max(0, Math.round(+e.target.value || 0)); e.target.value = state.cfg.score.start[k]; save(); };
 $('model').onchange = e => { state.cfg.model.file = e.target.value; save(); };
@@ -442,6 +455,7 @@ $('btn-render').onclick = async () => {
     toast(t('longClip'));
   }
 
+  layoutEd.close();
   state.busy = true; state.abort = new AbortController();
   $('btn-render').disabled = true; $('btn-cancel').disabled = false; $('downloads').innerHTML = '';
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.dataset.step === 'render'));

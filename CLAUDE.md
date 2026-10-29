@@ -40,6 +40,7 @@ js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 �
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
 js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON (no trail),
                   speed badge with game-style rank (SPEED_RANKS: C/B/A/S/SS, EST.)
+js/layout.js      LayoutEditor (step 4): drag HUD panels to move, corner handle to resize → cfg.render.layout {x, y, scale}
 js/clip.js        ClipPlayer: plays a span of the source video on a canvas with an overlay (score review: watch a rally)
 js/pipeline.js    openVideo/grabFrame + renderVideo(): pass 0 bg median → pass 1 analyze → rally analysis → pass 2 render+encode
 models/           yolo11n-pose.onnx, yolo11s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3)
@@ -54,6 +55,9 @@ fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/number
    Scoring: `autoWinners` → optional `opts.review` (app pauses the pipeline, user fixes winners / adds missed points) → `buildScore` timeline.
 4. **Pass 2** – decode again, draw HUD from snapshot[i] + `shuttleStateAt(i)`, encode via mediabunny `CanvasSource`;
    audio packets are copied, not re-encoded. Output: StreamTarget to a file handle (File System Access) or BufferTarget blob.
+
+Panel placement goes through `HudRenderer.rect(name)` (default spot or `cfg.render.layout`, scale via `scaleOf`) — draw code and
+the layout editor must both use it.
 
 HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`) — keep pass 1 state out of it.
 

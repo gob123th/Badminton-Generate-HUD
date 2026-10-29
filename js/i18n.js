@@ -42,6 +42,8 @@ const DICT = {
     'score.on': 'นับแต้ม (ต้องเปิดติดตามลูก)', 'score.startA': 'แต้มเริ่ม ทีม A', 'score.startB': 'ทีม B',
     'score.review': 'ตรวจ/แก้แต้มก่อนสร้างวิดีโอ',
     'saveDirect': 'บันทึกลงไฟล์โดยตรง (แนะนำสำหรับคลิปยาว)',
+    'layout.hint': 'จัดวาง HUD บนภาพด้านขวา: ลากเพื่อย้าย · ลากมุมขวาล่างเพื่อปรับขนาด',
+    'layout.reset': 'รีเซ็ตตำแหน่ง/ขนาด HUD', 'title.layout': 'จัดวาง HUD — ลากเพื่อย้าย · ลากมุมขวาล่างเพื่อปรับขนาด',
     'render': '▶ สร้างวิดีโอ', 'cancel': 'ยกเลิก',
 
     'title.empty': 'เลือกวิดีโอเพื่อเริ่ม', 'title.video': 'เฟรมเริ่มต้น',
@@ -114,6 +116,8 @@ const DICT = {
     'score.on': 'Count points (needs shuttle tracking)', 'score.startA': 'Start score team A', 'score.startB': 'Team B',
     'score.review': 'Review / fix points before rendering',
     'saveDirect': 'Save straight to a file (recommended for long clips)',
+    'layout.hint': 'Arrange the HUD on the image: drag to move · drag the bottom-right corner to resize',
+    'layout.reset': 'Reset HUD position/size', 'title.layout': 'HUD layout — drag to move · drag the bottom-right corner to resize',
     'render': '▶ Render video', 'cancel': 'Cancel',
 
     'title.empty': 'Choose a video to start', 'title.video': 'First frame',

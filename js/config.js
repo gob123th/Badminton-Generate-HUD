@@ -8,7 +8,11 @@ export const DEFAULT_CONFIG = {
   stats: { deadbandM: 0.15 },
   smoothing: { posAlpha: 0.45, tagAlpha: 0.25 },
   score: { enabled: true, review: true, start: { A: 0, B: 0 } },   // needs shuttle tracking
-  render: { ringRadiusM: 0.55, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false },
+  render: {
+    ringRadiusM: 0.55, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false,
+    // panel placement from the step-4 editor: {x, y (top-left, fractions of the frame), scale}; null = default spot
+    layout: { topHud: null, playerPanel: null, courtMap: null },
+  },
 };
 
 const KEY = 'bhud.config.v3';

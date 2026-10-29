@@ -67,6 +67,28 @@ export class HudRenderer {
     if (r.courtMap) this.courtMap(ctx, shown);
   }
 
+  // ---------------------------------------------------------------- panel layout (user-placed in step 4)
+  /** size multiplier of a panel: cfg.render.layout[name].scale */
+  scaleOf(name) { return Math.min(Math.max(this.cfg.render.layout?.[name]?.scale ?? 1, 0.4), 2.5); }
+  mapInner(s) {
+    const longPx = 290 * s, shortPx = (longPx * COURT_W) / COURT_L;
+    return this.court?.orientation === 'side' ? [longPx, shortPx] : [shortPx, longPx];
+  }
+  /**
+   * [x, y, w, h] of a panel ('topHud' | 'playerPanel' | 'courtMap'): the default spot, or cfg.render.layout[name] =
+   * {x, y, scale} with x, y = top-left as fractions of the frame (resolution independent). Clamped inside the frame.
+   */
+  rect(name, nPlayers = this.cfg.players.length, nTop = 3) {
+    const s = this.s * this.scaleOf(name), m = 28 * this.s, W = this.W, H = this.H;
+    let w, h, x, y;
+    if (name === 'topHud') { w = nTop * 290 * s + (nTop - 1) * 16 * s; h = 96 * s; x = (W - w) / 2; y = 24 * this.s; }
+    else if (name === 'playerPanel') { w = 480 * s; h = 34 * s + 64 * s * nPlayers; x = m; y = H - m - h; }
+    else { const [mw, mh] = this.mapInner(s); w = mw + 44 * s; h = mh + 82 * s; x = W - m - w; y = H - m - h; }
+    const l = this.cfg.render.layout?.[name];
+    if (l?.x != null) { x = l.x * W; y = l.y * H; }
+    return [Math.min(Math.max(x, 0), Math.max(0, W - w)), Math.min(Math.max(y, 0), Math.max(0, H - h)), w, h];
+  }
+
   // ---------------------------------------------------------------- floor ring
   projCircle(c, radius, pts = this.unit) {
     return pts.map(([ux, uy]) => this.court.toImg(c[0] + ux * radius, c[1] + uy * radius));
@@ -142,7 +164,7 @@ export class HudRenderer {
 
   // ---------------------------------------------------------------- top HUD
   topHud(ctx, sh, preview) {
-    const s = this.s;
+    const s = this.s * this.scaleOf('topHud');
     const panels = [
       { label: 'RALLY TIME', value: sh?.rallyTime != null ? fmtTime(sh.rallyTime) : '--:--.--', unit: '', live: sh?.live },
       { label: 'RALLY COUNT', value: sh?.rallyCount != null ? String(sh.rallyCount) : '--', unit: 'SHOT' },
@@ -151,9 +173,7 @@ export class HudRenderer {
     if (sh?.score) panels.unshift({ label: 'SCORE A - B', value: `${sh.score.A} - ${sh.score.B}`, unit: '' });
     if (preview) panels[0].value = 'ANALYZING';
     const pw = 290 * s, ph = 96 * s, gap = 16 * s, skew = 18 * s;
-    const total = panels.length * pw + (panels.length - 1) * gap;
-    let x = (this.W - total) / 2;
-    const y = 24 * s;
+    let [x, y] = this.rect('topHud', 0, panels.length);
     ctx.save();
     for (const pnl of panels) {
       ctx.beginPath();
@@ -194,9 +214,9 @@ export class HudRenderer {
 
   // ---------------------------------------------------------------- bottom-left player panel
   playerPanel(ctx, players, stats) {
-    const s = this.s, n = players.length;
-    const w = 480 * s, headH = 34 * s, rowH = 64 * s, m = 28 * s;
-    const x0 = m, y0 = this.H - m - headH - rowH * n;
+    const s = this.s * this.scaleOf('playerPanel'), n = players.length;
+    const headH = 34 * s, rowH = 64 * s;
+    const [x0, y0, w] = this.rect('playerPanel', n);
     const colMove = x0 + 360 * s, colSta = x0 + w - 18 * s;
     ctx.save();
     roundRect(ctx, x0, y0, w, headH + rowH * n, 8 * s);
@@ -251,12 +271,11 @@ export class HudRenderer {
 
   // ---------------------------------------------------------------- bottom-right court map
   courtMap(ctx, shown) {
-    const s = this.s, side = this.court.orientation === 'side';
-    const longPx = 290 * s, shortPx = (longPx * COURT_W) / COURT_L;
-    const [mw, mh] = side ? [longPx, shortPx] : [shortPx, longPx];
-    const pad = 22 * s, titleH = 38 * s, margin = 28 * s;
-    const pw = mw + pad * 2, ph = mh + pad * 2 + titleH;
-    const px0 = this.W - margin - pw, py0 = this.H - margin - ph, ox = px0 + pad, oy = py0 + titleH + pad;
+    const s = this.s * this.scaleOf('courtMap'), side = this.court.orientation === 'side';
+    const [mw, mh] = this.mapInner(s);
+    const pad = 22 * s, titleH = 38 * s;
+    const [px0, py0, pw, ph] = this.rect('courtMap');
+    const ox = px0 + pad, oy = py0 + titleH + pad;
     const toMap = (x, y) => {
       x = Math.min(Math.max(x, -0.8), COURT_W + 0.8); y = Math.min(Math.max(y, -0.8), COURT_L + 0.8);
       return side ? [ox + (y / COURT_L) * mw, oy + (x / COURT_W) * mh] : [ox + (x / COURT_W) * mw, oy + (y / COURT_L) * mh];
