@@ -118,7 +118,8 @@ button.danger:hover:not(:disabled) { border-color: var(--pink); color: var(--pin
 .stage-body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px; position: relative; min-height: 360px; }
 .stage canvas { max-width: 100%; max-height: calc(100vh - 140px); border-radius: 6px; touch-action: none; }
 #stage { cursor: crosshair; }
-.empty { text-align: center; color: var(--muted); }
+.empty { text-align: center; color: var(--muted); max-width: 320px; }
+.empty b { color: var(--text); font-weight: 600; }
 .empty-mark { width: 60px; height: 60px; margin: 0 auto 12px; border: 3px solid var(--cyan); border-radius: 50%; box-shadow: 0 0 24px rgba(0, 229, 255, 0.4), inset 0 0 18px rgba(0, 229, 255, 0.3); transform: scaleY(0.45); }
 
 .toast {
@@ -131,7 +132,19 @@ button.danger:hover:not(:disabled) { border-color: var(--pink); color: var(--pin
   .panel { overflow-y: auto; padding-right: 4px; }
 }
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; padding: 16px; }
-  .stage { order: -1; }
-  .stage-body { min-height: 220px; }
+  .layout { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  /* frame stays pinned while scrolling the steps, so corners/players can be adjusted from the controls below */
+  .stage { order: -1; position: sticky; top: 0; z-index: 5; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+  .stage:has(#empty:not([hidden])) { display: none; }   /* nothing to show yet: step 1 drop zone comes first */
+  .stage-head { padding: 6px 10px; font-size: 13px; }
+  .stage-body { min-height: 0; padding: 6px; }
+  .stage canvas { max-height: 46vh; }
+  .topbar { padding: 10px 12px; gap: 6px 12px; }
+  .sub { min-width: 0; flex-basis: 100%; order: 3; font-size: 12px; }
+}
+@media (max-width: 520px) {
+  .toggles { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .row.range { flex-direction: column; align-items: stretch; }
+  button, .button { padding: 9px 12px; }   /* bigger touch targets */
 }

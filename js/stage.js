@@ -19,7 +19,7 @@ export class Stage {
     this.padPx = 0;
     canvas.addEventListener('pointerdown', e => this.down(e));
     canvas.addEventListener('pointermove', e => this.move(e));
-    window.addEventListener('pointerup', () => { if (this.drag >= 0) { this.drag = -1; this.onChange?.(); } });
+    window.addEventListener('pointerup', () => { if (this.drag >= 0) { this.drag = -1; this.draw(); this.onChange?.(); } });
   }
 
   get pad() { return this.mode === 'calibrate' ? this.padPx : 0; }
@@ -43,15 +43,21 @@ export class Stage {
     const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / r.width;
     return [(e.clientX - r.left) * k - this.pad, (e.clientY - r.top) * k - this.pad];
   }
-  hitRadius() { return 14 * this.canvas.width / this.canvas.getBoundingClientRect().width; }
+  // image px per CSS px, so handles stay the same on-screen size on a phone and a desktop
+  unit() { const w = this.canvas.getBoundingClientRect().width; return w ? this.canvas.width / w : 1; }
+  hitRadius(e) { return (e.pointerType === 'touch' ? 28 : 14) * this.unit(); }
 
   down(e) {
     if (!this.frame) return;
     const [x, y] = this.toImage(e);
     if (this.mode === 'calibrate') {
-      const i = this.points.findIndex(p => Math.hypot(p[0] - x, p[1] - y) < this.hitRadius());
-      if (i >= 0) { this.drag = i; this.canvas.setPointerCapture(e.pointerId); return; }
-      if (this.points.length < 4) { this.points.push([x, y]); this.draw(); this.onChange?.(); return; }
+      const i = this.points.findIndex(p => Math.hypot(p[0] - x, p[1] - y) < this.hitRadius(e));
+      if (i >= 0) { this.drag = i; this.canvas.setPointerCapture(e.pointerId); this.draw(); return; }
+      if (this.points.length < 4) {
+        // keep dragging the new corner too: on touch the finger covers it, the loupe shows where it lands
+        this.points.push([x, y]); this.drag = this.points.length - 1; this.canvas.setPointerCapture(e.pointerId);
+        this.draw(); this.onChange?.(); return;
+      }
       // all 4 set: snap the nearest corner to the click and keep dragging it
       let near = 0;
       this.points.forEach((p, j) => { if (Math.hypot(p[0] - x, p[1] - y) < Math.hypot(this.points[near][0] - x, this.points[near][1] - y)) near = j; });
@@ -90,14 +96,14 @@ export class Stage {
     ctx.save();
     ctx.translate(pad, pad);
     if (this.mode === 'calibrate') {
-      const court = this.court();
-      if (court) court.drawLines(ctx, '#39ff88', 2 * s);
-      ctx.font = `${Math.round(20 * s)}px "Kanit", sans-serif`;
+      const court = this.court(), u = this.unit();
+      if (court) court.drawLines(ctx, '#39ff88', Math.max(2 * s, 1.5 * u));
+      ctx.font = `${Math.round(13 * u)}px "Kanit", sans-serif`;
       this.points.forEach(([x, y], i) => {
-        ctx.fillStyle = '#00E5FF'; ctx.strokeStyle = '#04121f'; ctx.lineWidth = 3 * s;
-        ctx.beginPath(); ctx.arc(x, y, 9 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 4 * s;
-        ctx.strokeText(`${i + 1} ${LABELS[i]}`, x + 13 * s, y - 12 * s); ctx.fillText(`${i + 1} ${LABELS[i]}`, x + 13 * s, y - 12 * s);
+        ctx.fillStyle = i === this.drag ? '#ffc400' : '#00E5FF'; ctx.strokeStyle = '#04121f'; ctx.lineWidth = 2 * u;
+        ctx.beginPath(); ctx.arc(x, y, 7 * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 3 * u;
+        ctx.strokeText(`${i + 1} ${LABELS[i]}`, x + 10 * u, y - 9 * u); ctx.fillText(`${i + 1} ${LABELS[i]}`, x + 10 * u, y - 9 * u);
       });
     } else if (this.mode === 'assign') {
       ctx.font = `${Math.round(22 * s)}px "Kanit", sans-serif`;
@@ -113,5 +119,20 @@ export class Stage {
       });
     }
     ctx.restore();
+    if (this.mode === 'calibrate' && this.drag >= 0) this.drawLoupe(this.points[this.drag]);
+  }
+
+  // magnified view of the dragged corner, in the top corner away from it
+  drawLoupe([x, y]) {
+    const ctx = this.ctx, u = this.unit(), D = 120 * u, zoom = 3, r = D / 2 / zoom, m = 8 * u;
+    const cx = x + this.pad < this.canvas.width / 2 ? this.canvas.width - m - D / 2 : m + D / 2, cy = m + D / 2;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, D / 2, 0, Math.PI * 2); ctx.fillStyle = '#0b1220'; ctx.fill(); ctx.clip();
+    ctx.drawImage(this.frame, x - r, y - r, 2 * r, 2 * r, cx - D / 2, cy - D / 2, D, D);   // raw frame: the dot would hide the target
+    ctx.restore();
+    ctx.strokeStyle = '#ffc400'; ctx.lineWidth = 1.5 * u;
+    ctx.beginPath(); ctx.moveTo(cx - D / 2, cy); ctx.lineTo(cx + D / 2, cy); ctx.moveTo(cx, cy - D / 2); ctx.lineTo(cx, cy + D / 2); ctx.stroke();
+    ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2 * u;
+    ctx.beginPath(); ctx.arc(cx, cy, D / 2, 0, Math.PI * 2); ctx.stroke();
   }
 }
