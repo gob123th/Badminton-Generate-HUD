@@ -5,19 +5,25 @@ const SIZE = 640;
 const NUM_ANCHORS = 8400;
 const MIN_CONF = 0.1;          // keep low-score boxes for ByteTrack's second association
 
-async function fetchWithProgress(url, onProgress) {
+// Collect chunks instead of pre-sizing from content-length: hosts like GitHub Pages gzip the model,
+// so content-length is the compressed size and the decoded stream is larger.
+export async function fetchWithProgress(url, onProgress, errMsg = 'โหลดโมเดลไม่สำเร็จ') {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`โหลดโมเดลไม่สำเร็จ (${res.status}) ${url}`);
-  const total = +res.headers.get('content-length') || 0;
-  if (!res.body || !total) return new Uint8Array(await res.arrayBuffer());
-  const reader = res.body.getReader(), buf = new Uint8Array(total);
+  if (!res.ok) throw new Error(`${errMsg} (${res.status}) ${url}`);
+  const total = +res.headers.get('content-length') || 0;     // approximate when compressed
+  if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  const reader = res.body.getReader(), chunks = [];
   let got = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    buf.set(value, got); got += value.length;
-    onProgress?.(got / total);
+    chunks.push(value); got += value.length;
+    if (total) onProgress?.(Math.min(0.99, got / total));
   }
+  const buf = new Uint8Array(got);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.length; }
+  onProgress?.(1);
   return buf;
 }
 

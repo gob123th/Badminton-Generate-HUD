@@ -2,19 +2,13 @@
 // Input: median background + 8 consecutive RGB frames at 512x288 → 8 heatmaps.
 // analyzeShuttle(): cleans the trajectory, fills short gaps, detects hits, estimates shot speed, segments rallies.
 import * as ort from 'onnxruntime-web';
+import { fetchWithProgress } from './detector.js';
 
 export const TN_W = 512, TN_H = 288, TN_SEQ = 8;
 
 export class ShuttleTracker {
   static async create(url, onProgress) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`โหลดโมเดลลูกขนไก่ไม่สำเร็จ (${res.status})`);
-    const total = +res.headers.get('content-length') || 0;
-    let bytes;
-    if (res.body && total) {
-      const r = res.body.getReader(); bytes = new Uint8Array(total); let got = 0;
-      for (;;) { const { done, value } = await r.read(); if (done) break; bytes.set(value, got); got += value.length; onProgress?.(got / total); }
-    } else bytes = new Uint8Array(await res.arrayBuffer());
+    const bytes = await fetchWithProgress(url, onProgress, 'โหลดโมเดลลูกขนไก่ไม่สำเร็จ');
     const errors = [];
     for (const ep of 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm']) {
       try { return new ShuttleTracker(await ort.InferenceSession.create(bytes, { executionProviders: [ep] }), ep); }
