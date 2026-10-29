@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Badminton HUD</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.webgpu.min.mjs",
+      "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.60.0/dist/bundles/mediabunny.min.mjs"
+    }
+  }
+  </script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark"></span>BADMINTON <b>HUD</b></div>
+    <div class="sub">สร้างวิดีโอแบดมินตันสไตล์ถ่ายทอดสด · ประมวลผลในเครื่องคุณ ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์</div>
+    <div class="badges"><span id="badge-gpu" class="badge">ตรวจสอบ GPU…</span></div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section class="step" data-step="video">
+        <h2><i>1</i>วิดีโอ</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden>
+          <span id="drop-text">ลากไฟล์วิดีโอมาวาง หรือคลิกเพื่อเลือก</span>
+        </label>
+        <div id="video-info" class="info muted"></div>
+        <div class="row range">
+          <label>เริ่ม (วินาที)<input type="number" id="start" min="0" step="0.1" value="0"></label>
+          <label>จบ (วินาที)<input type="number" id="end" min="0" step="0.1"></label>
+        </div>
+        <div class="row">
+          <button class="ghost" id="btn-test15">ทดสอบ 15 วินาที</button>
+          <button class="ghost" id="btn-full">ทั้งคลิป</button>
+        </div>
+      </section>
+
+      <section class="step" data-step="court">
+        <h2><i>2</i>สนาม</h2>
+        <div class="row">
+          <label>มุมกล้อง
+            <select id="orientation">
+              <option value="behind">หลัง/เฉียงหลังเส้นท้าย (เน็ตแนวนอน)</option>
+              <option value="side">ข้างสนาม (เน็ตแนวตั้ง)</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="ghost" id="btn-undo">ย้อนจุดล่าสุด</button>
+          <button class="ghost" id="btn-reset">เริ่มใหม่</button>
+        </div>
+        <p class="hint">คลิก <b>มุมนอกของสนามคู่</b> 4 มุมตามลำดับ <b>ซ้ายบน → ขวาบน → ขวาล่าง → ซ้ายล่าง</b> ตามที่เห็นในภาพ (มุมที่อยู่นอกภาพคลิกในขอบสีเข้มได้) ลากจุดเพื่อปรับ ให้เส้นเขียวทับเส้นสนามจริง</p>
+        <div id="court-status" class="status"></div>
+      </section>
+
+      <section class="step" data-step="players">
+        <h2><i>3</i>ผู้เล่น</h2>
+        <div class="row">
+          <button class="ghost" id="btn-detect">📸 ตรวจจับผู้เล่นจากเฟรมเริ่ม</button>
+          <button class="ghost" id="btn-add-player">+ เพิ่มเอง</button>
+        </div>
+        <div id="cards" class="cards"></div>
+        <div id="assign-status" class="status"></div>
+        <p class="hint">ระบบตัดรูปผู้เล่นในสนามมาให้ ใส่ชื่อ/สี/ทีม ได้เลย · คลิกกรอบคนในภาพเพื่อเพิ่มคนที่หลุด · ฝั่ง <b>far</b> = หลังเน็ต, <b>near</b> = ฝั่งกล้อง</p>
+        <div class="row">
+          <button class="ghost" id="btn-export">Export config</button>
+          <label class="ghost button">Import<input type="file" id="import" accept=".json" hidden></label>
+        </div>
+      </section>
+
+      <section class="step" data-step="render">
+        <h2><i>4</i>สร้างวิดีโอ</h2>
+        <div class="row">
+          <label>โมเดล
+            <select id="model">
+              <option value="models/yolo11s-pose.onnx">YOLO11s-pose (แม่นกว่า)</option>
+              <option value="models/yolo11n-pose.onnx">YOLO11n-pose (เร็วกว่า)</option>
+            </select>
+          </label>
+          <label>ตรวจจับทุก
+            <select id="stride">
+              <option value="1">1 เฟรม</option>
+              <option value="2">2 เฟรม (เร็วขึ้น)</option>
+              <option value="3">3 เฟรม</option>
+            </select>
+          </label>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="r-topHud"> HUD ด้านบน</label>
+          <label><input type="checkbox" id="r-playerPanel"> แผงผู้เล่นซ้ายล่าง</label>
+          <label><input type="checkbox" id="r-courtMap"> Court map</label>
+          <label><input type="checkbox" id="r-shuttle"> ติดตามลูกขนไก่</label>
+          <label><input type="checkbox" id="r-showIds"> Debug IDs</label>
+        </div>
+        <label class="inline"><input type="checkbox" id="save-direct" checked> บันทึกลงไฟล์โดยตรง (แนะนำสำหรับคลิปยาว)</label>
+        <div class="row">
+          <button class="primary" id="btn-render">▶ สร้างวิดีโอ</button>
+          <button class="ghost danger" id="btn-cancel" disabled>ยกเลิก</button>
+        </div>
+        <div class="progress"><div id="bar"></div></div>
+        <div id="render-status" class="status"></div>
+        <div id="downloads" class="row"></div>
+      </section>
+    </aside>
+
+    <section class="stage">
+      <div class="stage-head">
+        <span id="stage-title">เลือกวิดีโอเพื่อเริ่ม</span>
+      </div>
+      <div class="stage-body">
+        <canvas id="stage"></canvas>
+        <canvas id="out" hidden></canvas>
+        <div id="empty" class="empty">
+          <div class="empty-mark"></div>
+          <p>ลากไฟล์วิดีโอแบดมินตัน (กล้องตั้งนิ่ง) มาวางที่ช่องด้านซ้าย</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" hidden></div>
+</body>
+</html>

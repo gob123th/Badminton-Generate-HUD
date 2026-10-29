@@ -1,0 +1,79 @@
+# Badminton HUD — Web App
+
+Static web app (no build step, no server code). User drops a fixed-camera badminton video → browser runs
+player detection/tracking + shuttle tracking → renders a broadcast/game-style HUD → exports MP4 (original audio) + stats.json.
+Everything runs client-side; videos never leave the user's machine. UI text is Thai; HUD labels are English.
+
+The sibling folder `../` holds the original Python CLI (Phase 1 only). The web app is the main product now.
+
+## Run / test
+
+```bash
+cd webapp && python3 -m http.server 8080      # or VS Code Live Server (127.0.0.1:5500)
+```
+Open in Chrome/Edge (needs WebGPU + WebCodecs; Safari not supported). `file://` does not work (ES modules, fetch of models).
+
+- Quick check: drop `../sample_video/กอล์ฟ หมู vs วา มาร์ค.mp4`, press "ทดสอบ 15 วินาที", render. Court corners for this file are preset.
+- Debug: `window.__app` (state, stage, loadVideo, detectPlayers), `window.__lastResult` (blob + stats after render).
+- Tracking regression harness: `js/_diag.js` (dev only, not loaded by the app). In the console:
+  `const m = await import('/js/_diag.js'); m.run({ start: 0, end: 180 })` → poll `window.__diag`
+  (reports per-player net-crossing frames `flips` and same-side shirt-colour swaps `swaps`/`swapLog`).
+  Serve the video as `webapp/_full.mp4` for it; delete afterwards.
+
+## Architecture
+
+```
+index.html        UI shell + importmap (CDN libs pinned: onnxruntime-web@1.30.0, mediabunny@1.60.0)
+css/style.css     Dark navy UI; design tokens in :root; Kanit (UI/Thai) + Bebas Neue (numbers)
+js/app.js         UI controller: steps 1 วิดีโอ → 2 สนาม → 3 ผู้เล่น (cards) → 4 สร้างวิดีโอ; model loading; progress
+js/config.js      DEFAULT_CONFIG, PRESET_CORNERS (by file name + size), localStorage (key bhud.config.v2), import/export JSON
+js/stage.js       Interactive canvas: 'calibrate' (click/drag 4 court corners, padded border for off-frame corners) / 'assign'
+js/court.js       Court model (13.4 × 6.1 m, net y=6.7), 4-point homography image↔court, court lines
+js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints). WebGPU → WASM fallback
+js/bytetrack.js   ByteTrack port (Kalman xyah, two-stage association, greedy matching)
+js/players.js     Track → named player: known IDs, then court distance + shirt-colour histogram; hard court-side rule; EMA smoothing
+js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
+js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre
+js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies; shuttleStateAt()
+js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON + trail
+js/pipeline.js    openVideo/grabFrame + renderVideo(): pass 0 bg median → pass 1 analyze → rally analysis → pass 2 render+encode
+models/           yolo11n-pose.onnx, yolo11s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3)
+fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/numbers only — never Thai text)
+```
+
+### Data flow (renderVideo)
+1. **Pass 0** (shuttle on): 32 frames sampled across the range → per-pixel median background for TrackNet.
+2. **Pass 1** – per frame: draw to canvas → YOLO (every `stride` frames) → ByteTrack → PlayerTracker → StatsTracker →
+   push a **snapshot** (players' pos/head/show, dist/sta) + boxes; feed TrackNet (batches of 8). Live preview = HUD without shuttle.
+3. **Analysis** – `analyzeShuttle(rawPos, boxes)` over the whole range (needs the future of the trajectory).
+4. **Pass 2** – decode again, draw HUD from snapshot[i] + `shuttleStateAt(i)`, encode via mediabunny `CanvasSource`;
+   audio packets are copied, not re-encoded. Output: StreamTarget to a file handle (File System Access) or BufferTarget blob.
+
+HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`) — keep pass 1 state out of it.
+
+## Domain rules & gotchas (learned the hard way)
+- **First frame timestamp may be > 0** (e.g. 0.033 s). `CanvasSink.getCanvas(0)` then returns null. Always clamp to `vid.firstTs` (see `grabFrame`).
+- **Court coords:** x = width 0..6.1 (left→right seen from the near baseline), y = 0 far baseline → 13.4 near baseline.
+  `orientation: 'behind'` = corners clicked TL,TR,BR,BL map to far-left, far-right, near-right, near-left. `'side'` rotates.
+- **Players never cross the net** within a game: `PlayerTracker.onSide()` is a hard rule (0.6 m slack). End changes between games are NOT handled yet.
+- Same-side partners are separated by a 16-bin torso colour histogram (`torsoHist`); learned slowly (EMA 0.03) only when the player's box doesn't overlap others.
+- Foot point = ankle keypoints (conf > 0.35) else bbox bottom-centre. Tag anchor = bbox top-centre. Both EMA-smoothed (alphas tuned at 30 fps, `fpsAlpha` rescales).
+- **Shot speed is an estimate:** hitter→receiver court distance D over flight time T, drag-corrected
+  `v0 = L(e^{D/L} − 1)/T`, `L = vt²/g`, vt = 7 m/s, exponent capped at 2.2, T ≥ 0.25 s, must cross the net. Image-space speed was tried and is useless for this camera angle (motion is mostly in depth).
+- **Hits** = horizontal velocity reversal, or falling→rising (gravity can't do that), or a new flight appearing; dedupe 0.4 s. Rally = hits chained < 4 s apart, ≥ 2 hits.
+- Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.
+- Models > 30 MB must be split for some transfer tools; GitHub accepts ≤ 100 MB per file. Don't ship zips without `models/`.
+- Headless Chromium crashes on WebGPU inference — force WASM (`navigator.gpu = undefined`) for automated tests; it's ~1 fps there.
+
+## Conventions
+- Vanilla ES modules, no framework, no bundler. Keep files small and single-purpose; prefer extending existing modules.
+- Pin CDN versions in the importmap (exact versions ≥ 2 weeks old). No other runtime network calls besides models/fonts in this folder.
+- Config changes: add defaults to `DEFAULT_CONFIG` (deep-merged with saved config). Bump the localStorage key only for breaking shape changes.
+- UI copy in Thai, concise; status lines via `setStatus(id, text, 'ok'|'warn'|'err')`, transient messages via `toast()`.
+- `rally.js` must stay pure so it can be tested in node with recorded positions.
+- Anything shown as a measurement that isn't one (speed, stamina) is labelled EST / gamified.
+
+## Roadmap / known gaps
+- Automatic court-line detection (currently manual 4-click or preset).
+- End-change detection (teams switch sides between games).
+- Audio onset (racket "pock") as a secondary hit signal; InpaintNet from TrackNetV3 for longer gaps.
