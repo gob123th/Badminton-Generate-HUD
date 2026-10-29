@@ -38,7 +38,9 @@ js/players.js     Track → named player: known IDs, then court distance + shirt
 js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
 js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
-js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON + trail
+js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON (no trail),
+                  speed badge with game-style rank (SPEED_RANKS: C/B/A/S/SS, EST.)
+js/clip.js        ClipPlayer: plays a span of the source video on a canvas with an overlay (score review: watch a rally)
 js/pipeline.js    openVideo/grabFrame + renderVideo(): pass 0 bg median → pass 1 analyze → rally analysis → pass 2 render+encode
 models/           yolo11n-pose.onnx, yolo11s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3)
 fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/numbers only — never Thai text)
@@ -76,10 +78,12 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   courts) are kept when the shuttle sits in our players' racket zones (0.6 bh) in more frames than in *other* people's
   (`others` = detections that aren't our players, from pass 1); unclaimed mid-air runs are kept if they continue a kept run
   within 0.5 s along its velocity. Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip 200–240 s. Known loss: the apex of a
-  high lob after TrackNet lost the rise (> 0.5 s) is dropped (HUD trail only; hits/score unaffected).
+  high lob after TrackNet lost the rise (> 0.5 s) is dropped (LOCK ON gap only; hits/score unaffected).
   Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others}` to replay rally.js variants in the page or node.
-- **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot (the last
-  position is on the floor, so the homography is valid), else last hitter loses. Serve-court parity (right court ⇔ even score)
+- **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot, else
+  last hitter loses. The landing spot is used only if the shuttle was *falling* into its last point and that maps within court
+  ± 2 m — a mid-air last point (lost track / static false blob) mapped to 32 m and handed the point to the team that hit it out.
+  With a known last hitter: own side (didn't cross) or out → hitter loses; inside the other half → hitter wins. Serve-court parity (right court ⇔ even score)
   flags missed points. Everything depends on rally splitting — always offer the review step; it is an estimate.
 - **Hits** = horizontal velocity reversal, or falling→rising (gravity can't do that), or a new flight appearing; dedupe 0.4 s. Rally = hits chained < 4 s apart with no shuttle loss > 1 s between them, ≥ 2 hits
   (without the loss rule, casual hits between points chained a whole 40 s clip into one rally).

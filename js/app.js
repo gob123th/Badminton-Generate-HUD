@@ -7,6 +7,7 @@ import { Court } from './court.js';
 import { Stage } from './stage.js';
 import { loadFonts } from './hud.js';
 import { buildScore } from './rally.js';
+import { ClipPlayer } from './clip.js';
 import { t, setLang, getLang, onLangChange, applyI18n } from './i18n.js';
 
 const $ = id => document.getElementById(id);
@@ -331,10 +332,36 @@ function reviewScore({ an, auto, ctx, start, time }) {
   const winners = auto.map(a => a.winner), extras = [];
   const box = $('review'), list = $('review-rows');
   let sel = -1;
-  const seek = async (frame, rally) => {
-    sel = rally; draw();
-    const src = await grabFrame(state.vid, time(Math.max(0, frame)));
-    if (src) $('out').getContext('2d').drawImage(src, 0, 0, $('out').width, $('out').height);
+  // click a rally row → play it (1 s before the serve to 1.5 s after the end) with the analysed shuttle drawn on top
+  const fps = state.vid.fps, last = an.pos.length - 1, out = $('out');
+  const player = new ClipPlayer(state.vid.file, out, out.parentElement);
+  out.onclick = () => player.toggle();
+  const play = i => {
+    sel = i; draw();
+    const r = an.rallies[i], hits = new Set(r.hits.map(h => h.frame)), u = out.height / 720;
+    player.play(time(Math.max(0, r.start - fps)), time(Math.min(last, r.end + Math.round(1.5 * fps))), (g, mt) => {
+      const f = Math.round((mt - time(0)) * fps);
+      g.save();
+      g.lineCap = 'round'; g.strokeStyle = 'rgba(0,229,255,0.85)'; g.lineWidth = 3 * u;
+      g.beginPath();
+      for (let k = Math.max(0, f - 12), on = false; k <= Math.min(f, last); k++) {
+        const p = an.pos[k];
+        if (!p) { on = false; continue; }
+        on ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); on = true;
+      }
+      g.stroke();
+      const p = an.pos[Math.min(Math.max(f, 0), last)];
+      if (p) { g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 6 * u, 0, Math.PI * 2); g.fill(); }
+      for (let k = f - 6; k <= f; k++) {
+        if (!hits.has(k) || !an.pos[k]) continue;
+        g.strokeStyle = '#FFC400'; g.lineWidth = 3 * u;
+        g.beginPath(); g.arc(an.pos[k][0], an.pos[k][1], (14 + (f - k) * 4) * u, 0, Math.PI * 2); g.stroke();
+      }
+      g.font = `${Math.round(28 * u)}px "HUD Display", sans-serif`; g.fillStyle = 'rgba(8,18,40,0.8)';
+      g.fillRect(12 * u, 12 * u, 260 * u, 40 * u);
+      g.fillStyle = '#00E5FF'; g.fillText(`RALLY #${i + 1}  ·  ${fmt(mt - range().start)}`, 22 * u, 42 * u);
+      g.restore();
+    });
   };
   const pick = (value, onChange, none = true) => {
     const s = document.createElement('select');
@@ -374,7 +401,7 @@ function reviewScore({ an, auto, ctx, start, time }) {
         acts.append(pick(e.winner, v => { e.winner = v; }, false), button('✕', () => extras.splice(extras.indexOf(e), 1)));
       } else {
         acts.append(pick(winners[row.rally], v => { winners[row.rally] = v; }), button(t('rv.addAfter'), () => extras.push({ after: row.rally, winner: 'A' })));
-        li.onclick = () => seek(row.frame, row.rally);
+        li.onclick = () => play(row.rally);
       }
       list.appendChild(li);
     });
@@ -382,7 +409,10 @@ function reviewScore({ an, auto, ctx, start, time }) {
   box.hidden = false; draw();
   setTitle(() => t('title.review'));
   return new Promise(resolve => {
-    const done = v => { box.hidden = true; state.abort.signal.removeEventListener('abort', onAbort); resolve(v); };
+    const done = v => {
+      box.hidden = true; player.destroy(); out.onclick = null;
+      state.abort.signal.removeEventListener('abort', onAbort); resolve(v);
+    };
     const onAbort = () => done(null);
     state.abort.signal.addEventListener('abort', onAbort);
     $('btn-review-ok').onclick = () => done({ winners: [...winners], extras: extras.map(e => ({ ...e })) });

@@ -5,6 +5,16 @@ export const FONT_THAI = 'HUD Thai';        // Kanit SemiBold
 export const FONT_DISPLAY = 'HUD Display';  // Bebas Neue (Latin/numbers only)
 const NAVY = '8,18,40', CYAN = '#00E5FF', LOW = '#FF5252', MUTED = '#9FB4D0';
 
+// shot-speed tiers (all EST.): game-style rank shown at the shuttle right after a hit
+export const SPEED_RANKS = [
+  { min: 200, rank: 'SS', name: 'MONSTER SMASH', color: '#FF3D7F' },
+  { min: 150, rank: 'S', name: 'SMASH', color: '#FF9100' },
+  { min: 100, rank: 'A', name: 'POWER SHOT', color: '#FFC400' },
+  { min: 60, rank: 'B', name: 'DRIVE', color: '#7CFF4F' },
+  { min: 0, rank: 'C', name: 'TOUCH', color: '#9FB4D0' },
+];
+export const speedRank = kmh => SPEED_RANKS.find(r => kmh >= r.min);
+
 const rgba = (hex, a) => {
   const h = hex.replace('#', '');
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
@@ -136,7 +146,7 @@ export class HudRenderer {
     const panels = [
       { label: 'RALLY TIME', value: sh?.rallyTime != null ? fmtTime(sh.rallyTime) : '--:--.--', unit: '', live: sh?.live },
       { label: 'RALLY COUNT', value: sh?.rallyCount != null ? String(sh.rallyCount) : '--', unit: 'SHOT' },
-      { label: 'SHOT SPEED', value: sh?.lastSpeed != null ? String(sh.lastSpeed) : '--', unit: 'KM/H', note: 'EST.' },
+      { label: 'SHOT SPEED', value: sh?.lastSpeed != null ? String(sh.lastSpeed) : '--', unit: sh?.lastSpeed != null ? `KM/H ${speedRank(sh.lastSpeed).rank}` : 'KM/H', note: 'EST.' },
     ];
     if (sh?.score) panels.unshift({ label: 'SCORE A - B', value: `${sh.score.A} - ${sh.score.B}`, unit: '' });
     if (preview) panels[0].value = 'ANALYZING';
@@ -286,20 +296,11 @@ export class HudRenderer {
     ctx.restore();
   }
 
-  // ---------------------------------------------------------------- shuttle: trail + LOCK ON + speed label
+  // ---------------------------------------------------------------- shuttle: LOCK ON + speed badge (no trail: gaps and
+  // interpolated jumps drew long straight lines that looked nothing like the flight)
   shuttle(ctx, sh, t) {
     const s = this.s;
     ctx.save();
-    const tr = sh.trail;
-    if (tr.length > 1) {
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      for (let i = 1; i < tr.length; i++) {
-        const a = 1 - i / tr.length;
-        ctx.strokeStyle = `rgba(0,229,255,${0.85 * a})`; ctx.lineWidth = Math.max(5 * s * a, 1);
-        ctx.shadowColor = CYAN; ctx.shadowBlur = 8 * s;
-        ctx.beginPath(); ctx.moveTo(...tr[i - 1]); ctx.lineTo(...tr[i]); ctx.stroke();
-      }
-    }
     if (sh.pos) {
       const [x, y] = sh.pos, r = 22 * s, L = 9 * s, rot = t * 2.2;
       ctx.shadowColor = CYAN; ctx.shadowBlur = 10 * s;
@@ -319,20 +320,56 @@ export class HudRenderer {
       const label = 'LOCK ON', lw = ctx.measureText(label).width + 10 * s;
       ctx.fillStyle = `rgba(${NAVY},0.8)`; ctx.fillRect(r + 4 * s, -r - 2 * s, lw, 18 * s);
       ctx.fillStyle = CYAN; ctx.fillText(label, r + 9 * s, -r + 12 * s);
-      if (sh.speedLabel) {
-        const a = Math.max(0, 1 - Math.max(0, sh.speedLabel.age - 0.8) / 0.4);
-        ctx.globalAlpha = a;
-        ctx.font = font(30 * s, FONT_DISPLAY);
-        const txt = `${sh.speedLabel.speed}`, tw = ctx.measureText(txt).width;
-        ctx.font = font(15 * s, FONT_DISPLAY); const uw = ctx.measureText('KM/H EST').width;
-        const bx = r + 4 * s, by = -r + 20 * s, bw = tw + uw + 22 * s;
-        ctx.fillStyle = `rgba(${NAVY},0.85)`; ctx.fillRect(bx, by, bw, 32 * s);
-        ctx.fillStyle = CYAN; ctx.fillRect(bx, by, 3 * s, 32 * s);
-        ctx.font = font(30 * s, FONT_DISPLAY); ctx.fillStyle = '#fff'; ctx.fillText(txt, bx + 10 * s, by + 27 * s);
-        ctx.font = font(15 * s, FONT_DISPLAY); ctx.fillStyle = CYAN; ctx.fillText('KM/H EST', bx + 16 * s + tw, by + 26 * s);
-      }
       ctx.letterSpacing = '0px';
     }
+    ctx.restore();
+    if (sh.pos && sh.speedLabel) this.speedBadge(ctx, sh.pos[0], sh.pos[1], sh.speedLabel);
+  }
+
+  // ---------------------------------------------------------------- speed badge: rank + km/h, pops in after a hit
+  speedBadge(ctx, x, y, { speed, age }) {
+    const s = this.s, rk = speedRank(speed);
+    const a = Math.max(0, 1 - Math.max(0, age - 0.9) / 0.35);
+    if (a <= 0) return;
+    const pop = age < 0.15 ? 1 + (1 - age / 0.15) * 0.45 : 1;
+    ctx.save();
+    ctx.globalAlpha = a;
+    // impact burst for the top tiers
+    if (rk.min >= 150 && age < 0.35) {
+      const u = age / 0.35, n = rk.rank === 'SS' ? 16 : 10;
+      ctx.strokeStyle = rk.color; ctx.lineWidth = 3 * s * (1 - u); ctx.shadowColor = rk.color; ctx.shadowBlur = 14 * s;
+      for (let k = 0; k < n; k++) {
+        const th = (k / n) * Math.PI * 2 + 0.3, r0 = (26 + 40 * u) * s, r1 = (40 + 80 * u) * s;
+        ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * r0, y + Math.sin(th) * r0); ctx.lineTo(x + Math.cos(th) * r1, y + Math.sin(th) * r1); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
+    const num = String(speed), skew = 12 * s, rb = 64 * s, h = 72 * s, pad = 14 * s;
+    ctx.font = font(52 * s, FONT_DISPLAY); const tw = ctx.measureText(num).width;
+    ctx.font = font(17 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`;
+    const uw = ctx.measureText('KM/H EST').width, nw = ctx.measureText(rk.name).width;
+    ctx.letterSpacing = '0px';
+    const w = rb + pad + Math.max(tw + 8 * s + uw, nw) + pad + skew;
+    let bx = x + 34 * s, by = y - h - 30 * s;                      // up-right of the shuttle, flipped to stay in frame
+    if (bx + w > this.W - 12 * s) bx = x - 34 * s - w;
+    if (by < 12 * s) by = y + 30 * s;
+    if (by + h > this.H - 12 * s) by = this.H - 12 * s - h;
+    // leader line from the shuttle to the badge
+    ctx.strokeStyle = rk.color; ctx.lineWidth = 1.5 * s;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx + (bx > x ? 0 : w), by + h / 2); ctx.stroke();
+    ctx.translate(bx + w / 2, by + h / 2); ctx.scale(pop, pop); ctx.translate(-w / 2, -h / 2);
+    const para = (x0, w0) => { ctx.beginPath(); ctx.moveTo(x0 + skew, 0); ctx.lineTo(x0 + w0, 0); ctx.lineTo(x0 + w0 - skew, h); ctx.lineTo(x0, h); ctx.closePath(); };
+    para(0, w); ctx.fillStyle = `rgba(${NAVY},0.88)`; ctx.fill();
+    ctx.strokeStyle = rgba(rk.color, 0.7); ctx.lineWidth = 1.5 * s; ctx.stroke();
+    para(0, rb); ctx.fillStyle = rk.color; ctx.shadowColor = rk.color; ctx.shadowBlur = 18 * s; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = `rgb(${NAVY})`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.font = font((rk.rank.length > 1 ? 44 : 54) * s, FONT_DISPLAY); ctx.fillText(rk.rank, rb / 2 + 2 * s, h / 2 + 19 * s);
+    ctx.textAlign = 'left';
+    const tx = rb + pad;
+    ctx.font = font(52 * s, FONT_DISPLAY); ctx.fillStyle = '#fff'; ctx.fillText(num, tx, 46 * s);
+    ctx.font = font(17 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`;
+    ctx.fillStyle = rk.color; ctx.fillText('KM/H EST', tx + tw + 8 * s, 44 * s);
+    ctx.fillText(rk.name, tx, 64 * s);
     ctx.restore();
   }
 }

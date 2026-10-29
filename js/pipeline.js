@@ -9,7 +9,7 @@ import {
 import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker } from './players.js';
 import { StatsTracker } from './stats.js';
-import { HudRenderer } from './hud.js';
+import { HudRenderer, speedRank } from './hud.js';
 import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore } from './rally.js';
 import { t } from './i18n.js';
 
@@ -223,7 +223,7 @@ export async function renderVideo(opts) {
           rally: i + 1, start_s: +(snaps[r.start].t).toFixed(2), duration_s: +((r.end - r.start) / fps).toFixed(2), shots: r.hits.length,
           max_speed_kmh_est: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null,
         })),
-        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed })),
+        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed).rank : null })),
       } : null,
       score: score ? {
         start: { ...cfg.score.start }, final: score.final,

@@ -147,9 +147,8 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
 
 /** HUD state for frame i. */
 export function shuttleStateAt(an, i, fps) {
-  const s = { pos: an.pos[i], trail: [], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
+  const s = { pos: an.pos[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
   if (an.score) for (const e of an.score) { if (e.frame <= i) s.score = e; else break; }
-  for (let j = i; j >= Math.max(0, i - Math.round(10 * fps / 30)); j--) { if (!an.pos[j]) break; s.trail.push(an.pos[j]); }
   let rally = null;
   for (const r of an.rallies) { if (r.start <= i) rally = r; else break; }
   if (rally) {
@@ -184,8 +183,10 @@ export function scoreContext(players, toCourt) {
 /**
  * Guess each rally's winner. Evidence, strongest first:
  *  'serve' – the next rally's server's team (rally-point scoring: the winner serves next)
- *  'land'  – last shuttle position after the final hit → court (it is on the floor there, so the homography
- *            holds): inside → the other side wins; outside → the side it landed on wins
+ *  'land'  – last shuttle position after the final hit, if the shuttle was falling into it and it maps onto the
+ *            court area (± 2 m): on the floor the homography holds. A mid-air last point (TrackNet lost it, or a
+ *            false static blob) maps to nonsense like 32 m and is ignored. With the last hitter known: landing on
+ *            the hitter's own side (never crossed) or outside → hitter loses; inside the other side → hitter wins.
  *  'last'  – the last hitter's team loses
  * Returns [{winner: 'A'|'B'|null, by: 'serve'|'land'|'last'|null, land: [x, y]|null}] per rally.
  */
@@ -195,17 +196,23 @@ export function autoWinners(an, ctx) {
     const next = an.rallies[i + 1];
     const server = next ? teamOf(next.hits[0].player) : null;
     if (server) return { winner: server, by: 'serve', land: null };
+    const lastHit = r.hits.at(-1), hitter = teamOf(lastHit.player);
     let j = r.end;
-    while (j > r.hits.at(-1).frame && !an.pos[j]) j--;
-    if (j > r.hits.at(-1).frame && an.pos[j] && toCourt) {
-      const land = toCourt(an.pos[j][0], an.pos[j][1]), x0 = singles ? SINGLES_IN : 0;
-      const side = land[1] < NET ? 'far' : 'near';
+    while (j > lastHit.frame && !an.pos[j]) j--;
+    // falling into the last point: image y grew over the preceding tracked frames
+    let k = j;
+    while (k > Math.max(lastHit.frame, j - 8) && an.pos[k - 1]) k--;
+    const falling = j > lastHit.frame && an.pos[j] && an.pos[j][1] - an.pos[k][1] > 4;
+    const land = falling && toCourt ? toCourt(an.pos[j][0], an.pos[j][1]) : null;
+    if (land && land[0] > -2 && land[0] < CW + 2 && land[1] > -2 && land[1] < CL + 2) {
+      const x0 = singles ? SINGLES_IN : 0, side = land[1] < NET ? 'far' : 'near';
       const inside = land[0] >= x0 && land[0] <= CW - x0 && land[1] >= 0 && land[1] <= CL;
-      const winner = inside ? other(sideTeam[side]) : sideTeam[side];
+      let winner;
+      if (hitter) winner = sideTeam[side] === hitter || !inside ? other(hitter) : hitter;
+      else winner = inside ? other(sideTeam[side]) : sideTeam[side];
       if (winner) return { winner, by: 'land', land: land.map(v => +v.toFixed(2)) };
     }
-    const lastHitter = teamOf(r.hits.at(-1).player);
-    return lastHitter ? { winner: other(lastHitter), by: 'last', land: null } : { winner: null, by: null, land: null };
+    return hitter ? { winner: other(hitter), by: 'last', land: null } : { winner: null, by: null, land: null };
   });
 }
 

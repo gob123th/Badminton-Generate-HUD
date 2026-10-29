@@ -185,3 +185,5 @@ button.danger:hover:not(:disabled) { border-color: var(--pink); color: var(--pin
 .review-rows .acts { display: flex; gap: 4px; grid-column: 3; grid-row: 1; justify-self: end; }
 .review-rows .acts select, .review-rows .acts button { padding: 3px 6px; font-size: 12px; }
 .review-final { font: 22px/1.2 "Bebas", sans-serif; letter-spacing: 1px; margin-bottom: 8px; }
+.clip-src { position: absolute; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; left: 0; top: 0; }
+#out { cursor: pointer; }

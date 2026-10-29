@@ -48,7 +48,7 @@ const DICT = {
     'title.court': 'ปรับเส้นสนาม — คลิก/ลาก 4 มุมนอกของสนามคู่',
     'title.players': 'ผู้เล่นที่ตรวจพบ — คลิกกรอบเพื่อเพิ่ม/เลือก', 'title.render': 'ผลลัพธ์',
     'title.processing': 'กำลังประมวลผล (พรีวิวสด)', 'title.analyzing': 'กำลังวิเคราะห์ (พรีวิวสด)',
-    'title.encoding': 'กำลังสร้างวิดีโอ', 'title.result': 'ผลลัพธ์ (เฟรมสุดท้าย)', 'title.review': 'ตรวจแต้ม — คลิกแถวเพื่อดูเฟรมตอนจบ rally',
+    'title.encoding': 'กำลังสร้างวิดีโอ', 'title.result': 'ผลลัพธ์ (เฟรมสุดท้าย)', 'title.review': 'ตรวจแต้ม — คลิกแถวเพื่อเล่น rally นั้น · คลิกวิดีโอเพื่อหยุด/เล่นต่อ',
     'empty': 'ลากไฟล์วิดีโอแบดมินตัน (กล้องตั้งนิ่ง) มาวางที่ช่อง <b>1 วิดีโอ</b>',
 
     'needVideo': 'เลือกวิดีโอก่อน', 'needCourt': 'ตั้งค่าสนามก่อน', 'needPlayer': 'เพิ่มผู้เล่นอย่างน้อย 1 คน',
@@ -120,7 +120,7 @@ const DICT = {
     'title.court': 'Court lines — click/drag the 4 outer doubles corners',
     'title.players': 'Detected players — click a box to add/select', 'title.render': 'Result',
     'title.processing': 'Processing (live preview)', 'title.analyzing': 'Analyzing (live preview)',
-    'title.encoding': 'Rendering video', 'title.result': 'Result (last frame)', 'title.review': 'Review points — click a row to see the frame where the rally ends',
+    'title.encoding': 'Rendering video', 'title.result': 'Result (last frame)', 'title.review': 'Review points — click a row to play that rally · click the video to pause/resume',
     'empty': 'Drop a badminton video (fixed camera) into <b>1 Video</b>',
 
     'needVideo': 'Choose a video first', 'needCourt': 'Set up the court first', 'needPlayer': 'Add at least 1 player',
