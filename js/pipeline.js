@@ -81,6 +81,7 @@ export async function renderVideo(opts) {
     const cs = [];
     for await (const wc of bgSink.canvasesAtTimestamps(ts)) if (wc) cs.push(wc.canvas);
     shuttle.setBackground(cs);
+    shuttle.setRegion(court.airPolygon(), W, H);          // ignore shuttles from neighbouring courts
     shuttle.queue = [];
   }
 

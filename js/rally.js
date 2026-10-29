@@ -1,5 +1,10 @@
 // Pure trajectory analysis: clean shuttle path, hits, speed estimate, rallies. No browser APIs (testable in node).
 const hyp = (x, y) => Math.hypot(x, y);
+/** distance from (x, y) to a player box's upper body / racket zone, in box heights */
+function zoneDist(x, y, b) {
+  const bh = b[3] - b[1], cx = Math.min(Math.max(x, b[0]), b[2]), cy = Math.min(Math.max(y, b[1] - 0.5 * bh), b[1] + 0.6 * bh);
+  return hyp(x - cx, y - cy) / bh;
+}
 
 /**
  * raw: per-frame shuttle position [x,y] | null (full-res px)
@@ -29,6 +34,18 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
     i = j;
   }
 
+  // 2b) drop flights that never pass a tracked player's racket zone: shuttles from neighbouring courts
+  //     (an image region can't separate them when one court's air overlaps the next court in the image)
+  if (boxes.some(f => f?.length)) {
+    for (let i = 0; i < N; i++) {
+      if (!pos[i]) continue;
+      let j = i, near = false;
+      for (; j < N && pos[j]; j++) near ||= (boxes[j] || []).some(b => zoneDist(pos[j][0], pos[j][1], b) < 1.2);
+      if (!near) for (let m = i; m < j; m++) pos[m] = null;
+      i = j;
+    }
+  }
+
   // 3) hits: horizontal reversal, falling→rising (gravity can't do that), or a new flight appearing
   const w = Math.max(2, Math.round(3 * f));
   const vel = (a, b) => (pos[a] && pos[b] ? [(pos[b][0] - pos[a][0]) / (b - a), (pos[b][1] - pos[a][1]) / (b - a)] : null);
@@ -50,8 +67,7 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280 } = {}) {
     const [x, y] = pos[h.frame];
     let best = null, bd = Infinity;
     for (const b of boxes[h.frame] || []) {
-      const bh = b[3] - b[1], cx = Math.min(Math.max(x, b[0]), b[2]), cy = Math.min(Math.max(y, b[1] - 0.5 * bh), b[1] + 0.6 * bh);
-      const d = hyp(x - cx, y - cy) / bh;
+      const d = zoneDist(x, y, b);
       if (d < bd) { bd = d; best = b; }
     }
     h.player = best && bd < 1.5 ? (best[4] ?? null) : null;

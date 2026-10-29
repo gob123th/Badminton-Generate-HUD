@@ -38,6 +38,19 @@ export class ShuttleTracker {
     }
   }
 
+  /** Only accept shuttles inside this image polygon (full-res px), e.g. Court.airPolygon(); null = whole frame. */
+  setRegion(poly, W, H) {
+    this.mask = null;
+    if (!poly?.length) return;
+    const c = new OffscreenCanvas(TN_W, TN_H), g = c.getContext('2d');
+    g.beginPath();
+    poly.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x * TN_W / W, y * TN_H / H));
+    g.fill();
+    const a = g.getImageData(0, 0, TN_W, TN_H).data;
+    this.mask = new Uint8Array(TN_W * TN_H);
+    for (let p = 0; p < this.mask.length; p++) this.mask[p] = a[p * 4 + 3] > 127 ? 1 : 0;
+  }
+
   /** Add a frame; returns [{frame, pos:[x,y]|null}] (full-res px) when a batch of 8 is complete. */
   async push(source, frameIndex, W, H) {
     const P = this.plane, slot = this.queue.length, off = 3 * (slot + 1) * P;
@@ -61,15 +74,16 @@ export class ShuttleTracker {
     const frames = this.queue; this.queue = [];
     const out = await this.session.run({ [this.session.inputNames[0]]: new ort.Tensor('float32', this.input, [1, 3 * (TN_SEQ + 1), TN_H, TN_W]) });
     const hm = out[this.session.outputNames[0]].data, P = this.plane;
-    const res = frames.map((f, k) => ({ frame: f, pos: blobCenter(hm, k * P, W / TN_W, H / TN_H) }));
+    const res = frames.map((f, k) => ({ frame: f, pos: blobCenter(hm, k * P, W / TN_W, H / TN_H, this.mask) }));
     for (const t of Object.values(out)) t.dispose?.();
     return res;
   }
 }
 
-// largest connected region of heatmap > 0.5 → bbox center (same as TrackNetV3 predict_location)
+// largest connected region of heatmap > 0.5 → bbox center (same as TrackNetV3 predict_location),
+// skipping regions whose center is outside the court mask
 const seen = new Uint8Array(TN_W * TN_H), stack = new Int32Array(TN_W * TN_H);
-function blobCenter(hm, off, sx, sy) {
+function blobCenter(hm, off, sx, sy, mask) {
   seen.fill(0);
   let best = null, bestA = 0;
   for (let p = 0; p < TN_W * TN_H; p++) {
@@ -85,7 +99,8 @@ function blobCenter(hm, off, sx, sy) {
         seen[r] = 1; stack[sp++] = r;
       }
     }
-    if (a > bestA) { bestA = a; best = [((x0 + x1 + 1) / 2) * sx, ((y0 + y1 + 1) / 2) * sy]; }
+    if (a <= bestA || (mask && !mask[((y0 + y1) >> 1) * TN_W + ((x0 + x1) >> 1)])) continue;
+    bestA = a; best = [((x0 + x1 + 1) / 2) * sx, ((y0 + y1 + 1) / 2) * sy];
   }
   return best;
 }

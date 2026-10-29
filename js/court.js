@@ -110,6 +110,29 @@ export class Court {
       s *= 1.25;
     }
   }
+  /**
+   * Image polygon (convex hull) of the air above this court: floor + margin, lifted up to `height` m.
+   * The lift uses the local px-per-metre of the floor (the less foreshortened court axis), so it is an
+   * approximation without a vertical calibration. Used to ignore shuttles from neighbouring courts.
+   */
+  airPolygon(height = 8, margin = 1.5) {
+    const m = margin, floor = [[-m, -m], [COURT_W + m, -m], [COURT_W + m, COURT_L + m], [-m, COURT_L + m]];
+    const pts = [];
+    for (const [x, y] of floor) {
+      const p = this.toImg(x, y), ax = this.toImg(x + 1, y), ay = this.toImg(x, y + 1);
+      const ppm = Math.max(Math.hypot(ax[0] - p[0], ax[1] - p[1]), Math.hypot(ay[0] - p[0], ay[1] - p[1]));
+      pts.push(p, [p[0], p[1] - ppm * height]);
+    }
+    if (!pts.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))) return null;
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);      // monotone-chain convex hull
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const half = list => {
+      const h = [];
+      for (const p of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], p) <= 0) h.pop(); h.push(p); }
+      return h.slice(0, -1);
+    };
+    return half(pts).concat(half([...pts].reverse()));
+  }
   /** 0 = far half, 1 = near half, null = within hysteresis of the net */
   static half(p, hyst = 0) {
     const d = p[1] - NET_Y;
