@@ -89,6 +89,7 @@ export async function renderVideo(opts) {
   const tracker = new PlayerTracker(cfg, court, fps, seeds);
   const stats = new StatsTracker(cfg, tracker.players);
   const stride = Math.max(1, cfg.model.stride | 0);
+  const rois = court.farTiles(W, H);                  // zoomed passes for small far-side players
   const snaps = [], rawShuttle = [], boxes = [];
   let n = 0, firstTs = null, canceled = false;
   const sink = new CanvasSink(vid.video, { poolSize: 2 });
@@ -98,7 +99,7 @@ export async function renderVideo(opts) {
     const t = wc.timestamp - firstTs;
     ctx.drawImage(wc.canvas, 0, 0, W, H);
     if (n % stride === 0) {
-      const dets = await detector.detect(canvas, W, H, cfg.model.iou);
+      const dets = await detector.detect(canvas, W, H, cfg.model.iou, rois);
       tracker.update(bt.update(dets), t, ctx);
       stats.update(tracker.players, t);
     }

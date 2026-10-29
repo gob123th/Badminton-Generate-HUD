@@ -83,6 +83,33 @@ export class Court {
     const m = this.margin;
     return x >= -m && x <= COURT_W + m && y >= -m && y <= COURT_L + m;
   }
+  /**
+   * Overlapping image tiles [x, y, w, h] over the far half (+ room for a standing player above the baseline),
+   * detected near native resolution: far players are ~45 px tall after the 640 px full-frame downscale and
+   * YOLO misses them. [] when the region is off-frame.
+   */
+  farTiles(W, H, size = 640, maxTiles = 4) {
+    const m = this.margin, pts = [[-m, -m], [COURT_W + m, -m], [COURT_W + m, NET_Y + 1], [-m, NET_Y + 1]].map(p => this.toImg(...p));
+    if (!pts.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))) return [];
+    const tall = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / (COURT_W + 2 * m) * 2.4;   // ~2.4 m in px at the far baseline
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const x1 = Math.max(0, Math.min(...xs) - tall * 0.4), x2 = Math.min(W, Math.max(...xs) + tall * 0.4);
+    const y1 = Math.max(0, Math.min(...ys) - tall), y2 = Math.min(H, Math.max(...ys) + tall * 0.2);
+    if (x2 - x1 < 16 || y2 - y1 < 16) return [];
+    const ov = Math.min(Math.max(tall * 0.5, 64), 200);   // > a player's width, so everyone is whole in some tile
+    const starts = (a, b, s) => {
+      if (b - a <= s) return [a];
+      const n = Math.ceil((b - a - ov) / (s - ov));
+      return Array.from({ length: n }, (_, i) => a + (b - a - s) * i / (n - 1));
+    };
+    let s = size, tiles;
+    for (;;) {   // grow tiles (= downscale) until they fit the budget, e.g. 4K video
+      const sx = starts(x1, x2, s), sy = starts(y1, y2, s);
+      tiles = sy.flatMap(y => sx.map(x => [x, y, Math.min(s, x2 - x), Math.min(s, y2 - y)].map(Math.round)));
+      if (tiles.length <= maxTiles) return tiles;
+      s *= 1.25;
+    }
+  }
   /** 0 = far half, 1 = near half, null = within hysteresis of the net */
   static half(p, hyst = 0) {
     const d = p[1] - NET_Y;

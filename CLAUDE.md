@@ -31,7 +31,7 @@ js/app.js         UI controller: steps 1 วิดีโอ → 2 สนาม �
 js/config.js      DEFAULT_CONFIG (players: [] — never preset names), localStorage (key bhud.config.v3; v2 migrated minus players), corners per file, import/export JSON
 js/stage.js       Interactive canvas: 'calibrate' (click/drag 4 court corners, padded border for off-frame corners) / 'assign'
 js/court.js       Court model (13.4 × 6.1 m, net y=6.7), 4-point homography image↔court, court lines
-js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints). WebGPU → WASM fallback
+js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints) + zoomed far-court tiles. WebGPU → WASM fallback
 js/bytetrack.js   ByteTrack port (Kalman xyah, two-stage association, greedy matching)
 js/players.js     Track → named player: known IDs, then court distance + shirt-colour histogram; hard court-side rule; EMA smoothing
 js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
@@ -60,6 +60,9 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **Players never cross the net** within a game: `PlayerTracker.onSide()` is a hard rule (0.6 m slack). End changes between games are NOT handled yet.
 - Same-side partners are separated by a 16-bin torso colour histogram (`torsoHist`). The fingerprint comes from the player card (`players[i].hist`, saved when the user names cards) or is averaged over the first 45 non-overlapping frames — then **frozen** (an EMA-updated model drifted after an overlap and locked in the swap). A detection that matches a same-side partner's shirt by > 0.12 is vetoed for this player, in both the known-ID and the distance steps.
 - Verified on the sample clip: old tracker put the two far-side players on the wrong person in ~60% of far-side frames; the frozen-fingerprint tracker had 0 wrong frames in the measured window. Ground truth used: far side = one white shirt, one navy shirt.
+- **Far-side players are too small for the 640 px full-frame pass** (e.g. ~90 px tall in 720p → ~45 px → YOLO score < 0.1, both
+  far players missed). `Court.farTiles()` adds overlapping ~native-resolution tiles over the far half (≤ 4 tiles); `detect(…, rois)`
+  merges them by NMS and drops boxes cut by an inner tile edge. Costs ~1 + tiles inferences per detected frame.
 - Foot point = ankle keypoints (conf > 0.35) else bbox bottom-centre. Tag anchor = bbox top-centre. Both EMA-smoothed (alphas tuned at 30 fps, `fpsAlpha` rescales).
 - **Shot speed is an estimate:** hitter→receiver court distance D over flight time T, drag-corrected
   `v0 = L(e^{D/L} − 1)/T`, `L = vt²/g`, vt = 7 m/s, exponent capped at 2.2, T ≥ 0.25 s, must cross the net. Image-space speed was tried and is useless for this camera angle (motion is mostly in depth).

@@ -33,7 +33,7 @@ export async function run({ url = '_full.mp4', start = 0, end = 180, every = 1, 
     const t = wc.timestamp - first;
     ctx.drawImage(wc.canvas, 0, 0);
     if (n % every === 0) {
-      const ps = tr.update(bt.update(await det.detect(cv, W, H, cfg.model.iou)), t, fixed ? ctx : null);
+      const ps = tr.update(bt.update(await det.detect(cv, W, H, cfg.model.iou, court.farTiles(W, H))), t, fixed ? ctx : null);
       ps.forEach((p, i) => {
         if (!p.visible) return;
         seen[i]++;

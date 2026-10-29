@@ -159,7 +159,8 @@ async function detectPlayers() {
   try {
     const det = await getDetector('assign-status');
     setStatus('assign-status', 'กำลังตรวจจับ…');
-    const raw = await det.detect(state.frame, state.frame.width, state.frame.height, state.cfg.model.iou);
+    const { width: W, height: H } = state.frame;
+    const raw = await det.detect(state.frame, W, H, state.cfg.model.iou, court.farTiles(W, H));
     const dets = raw.filter(d => d.score >= state.cfg.model.conf).map(d => {
       const f = footPoint(d), c = court.toCourt(f[0], f[1]);
       return { ...d, foot: f, court: c };
