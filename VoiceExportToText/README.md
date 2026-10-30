@@ -10,6 +10,10 @@
 3. แก้ชื่อผู้พูด, รวมผู้พูด, เปลี่ยนผู้พูดรายบรรทัด (คลิกชื่อ), แก้ข้อความ (คลิกที่ข้อความ), คลิกเวลาเพื่อฟัง
 4. Export: TXT / Word / SRT / JSON (JSON เปิดกลับมาแก้ต่อได้)
 
+### เปิดผ่านเว็บ (GitHub Pages)
+https://gob123th.github.io/Badminton-Generate-HUD/VoiceExportToText/ — ไม่ต้องติดตั้งอะไร ครั้งแรกโหลดโมเดล ~0.5 GB แล้วเก็บไว้ใน browser
+(`sw.js`: รวมไฟล์ `.part*`, เก็บ cache, ใส่ header ให้ WASM ใช้หลาย thread — หน้า reload เองหนึ่งครั้งตอนเปิดครั้งแรก)
+
 ### Windows (ไม่ต้องมี Python)
 - ครั้งแรก: ดับเบิลคลิก `download-models.bat` (ใช้ curl.exe ที่มีใน Windows 10+)
 - ดับเบิลคลิก `start.bat` → server ด้วย PowerShell เปิด http://localhost:8765 ให้

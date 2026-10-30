@@ -144,6 +144,16 @@
   <script>
     // Module scripts never load from file:// — show the hint without depending on app.js
     if (location.protocol === 'file:') document.getElementById('fileBanner').hidden = false;
+    // sw.js joins the split models, caches them and adds the headers for multi-threaded WASM (GitHub Pages can't send
+    // them); the headers only apply from the next page load, so reload once when the page isn't isolated yet
+    else if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => {
+        if (!self.crossOriginIsolated && !sessionStorage.getItem('sw-reload')) {
+          sessionStorage.setItem('sw-reload', '1');
+          location.reload();
+        }
+      }).catch(() => {});
+    }
   </script>
   <script type="module" src="js/app.js"></script>
 </body>
