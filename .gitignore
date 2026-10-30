@@ -1,1 +1,6 @@
 *.mp4
+# Whisper fp16 models > 100 MB (GitHub limit): git keeps <file>.part0, .part1, … — joined by
+# VoiceExportToText/start.command, serve.py, serve.ps1 on start
+VoiceExportToText/models/**/*_fp16.onnx
+# optional Whisper Turbo (~1.6 GB, download-models.command asks): not in git
+VoiceExportToText/models/striimit/
