@@ -7,12 +7,18 @@ import { t } from './i18n.js';
 
 export const TN_W = 512, TN_H = 288, TN_SEQ = 8;
 
+// WebGPU's default NHWC layout gives wrong heatmaps for both shuttle models (onnxruntime-web 1.30.0): TrackNetV3's 8
+// heatmaps all came out near the batch's first frame (the circle stood still, then jumped every 8 frames), WASB's
+// were off too (max error 0.73 / 0.86 vs WASM). preferredLayout NCHW matches WASM exactly, ~40 % slower (~19 ms/frame
+// each on this Mac). YOLO is fine with the default.
+const provider = ep => (ep === 'webgpu' ? { name: 'webgpu', preferredLayout: 'NCHW' } : ep);
+
 export class ShuttleTracker {
   static async create(url, onProgress) {
     const bytes = await fetchWithProgress(url, onProgress, t('err.shuttleFetch'));
     const errors = [];
     for (const ep of 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm']) {
-      try { return new ShuttleTracker(await ort.InferenceSession.create(bytes, { executionProviders: [ep] }), ep); }
+      try { return new ShuttleTracker(await ort.InferenceSession.create(bytes, { executionProviders: [provider(ep)] }), ep); }
       catch (e) { errors.push(`${ep}: ${e.message || e}`); }
     }
     throw new Error(t('err.shuttleOpen') + '\n' + errors.join('\n'));
@@ -92,7 +98,7 @@ export class WasbTracker {
     const bytes = await fetchWithProgress(url, onProgress, t('err.shuttleFetch'));
     const errors = [];
     for (const ep of 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm']) {
-      try { return new WasbTracker(await ort.InferenceSession.create(bytes, { executionProviders: [ep] }), ep); }
+      try { return new WasbTracker(await ort.InferenceSession.create(bytes, { executionProviders: [provider(ep)] }), ep); }
       catch (e) { errors.push(`${ep}: ${e.message || e}`); }
     }
     throw new Error(t('err.shuttleOpen') + '\n' + errors.join('\n'));

@@ -424,7 +424,7 @@ function reviewScore({ an, auto, ctx, start, time }) {
   const box = $('review'), list = $('review-rows');
   let sel = -1;
   // click a rally row → play it with the analysed shuttle drawn on top
-  const fps = state.vid.fps, last = an.pos.length - 1, out = $('out');
+  const fps = state.vid.fps, last = an.pos.length - 1, out = $('out'), P = an.view ?? an.pos;   // smoothed path
   const player = new ClipPlayer(state.vid.file, out, out.parentElement);
   out.onclick = () => player.toggle();
   const play = i => {
@@ -438,12 +438,12 @@ function reviewScore({ an, auto, ctx, start, time }) {
       g.lineCap = 'round'; g.strokeStyle = 'rgba(0,229,255,0.85)'; g.lineWidth = 3 * u;
       g.beginPath();
       for (let k = Math.max(0, f - 12), on = false; k <= Math.min(f, last); k++) {
-        const p = an.pos[k];
+        const p = P[k];
         if (!p) { on = false; continue; }
         on ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); on = true;
       }
       g.stroke();
-      const p = an.pos[Math.min(Math.max(f, 0), last)];
+      const p = P[Math.min(Math.max(f, 0), last)];
       if (p) { g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 6 * u, 0, Math.PI * 2); g.fill(); }
       for (let k = f - 6; k <= f; k++) {
         if (!hits.has(k) || !an.pos[k]) continue;

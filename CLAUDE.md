@@ -131,13 +131,25 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **WASB assist** (`cfg.model.assist`, on): compared with TrackNetV3 by eye on "ต้า วา vs หมู ฟ้าช" 0–120 s (python,
   same pre/post-processing as the app): inside our court they agree on ~90 % of frames; TrackNetV3-only points were mostly
   shuttles lying on the floor, WASB-only ones included high lobs near the roof (and more legs / net / posts). WebGPU on
-  this Mac: YOLO 25.7 ms per tile (×4 at 720p), TrackNetV3 14.5 ms/frame, WASB 14.5 ms/frame. 40 s clip end-to-end:
+  this Mac: YOLO 25.7 ms per tile (×4 at 720p), TrackNetV3 14.5 ms/frame, WASB 14.5 ms/frame (NHWC — broken output,
+  see above; NCHW ~20 / ~19 ms). 40 s clip end-to-end:
   stride 1 without WASB 149 s, stride 5 with WASB 71 s; hits found 6 → 16 (not verified one by one).
 - **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot, else
   last hitter loses. The landing spot is used only if the shuttle was *falling* into its last point and that maps within court
   ± 2 m — a mid-air last point (lost track / static false blob) mapped to 32 m and handed the point to the team that hit it out.
   With a known last hitter: own side (didn't cross) or out → hitter loses; inside the other half → hitter wins. Serve-court parity (right court ⇔ even score)
   flags missed points. Everything depends on rally splitting — always offer the review step; it is an estimate.
+- **Shuttle models must run WebGPU with `preferredLayout: 'NCHW'`** (`provider()` in shuttle.js). With the default NHWC
+  layout onnxruntime-web 1.30.0 returned wrong heatmaps for TrackNetV3 and WASB (max error 0.73 / 0.86 vs WASM;
+  TrackNetV3's 8 outputs all sat near the batch's first frame → the circle stood still and jumped every 8 frames, and
+  most of the shuttle was missed). NCHW matches WASM exactly; TrackNetV3 ~14 → ~20 ms/frame, WASB ~15 → ~19. YOLO is
+  fine with the default (max error 0.0015). Check new models against WASM before trusting WebGPU. On `_full.mp4`
+  30–50 s: shuttle frames 65 → 240. **Everything in rally.js below (still blobs, hits, rallies, serves, neighbouring-court
+  filter) was tuned and "verified by eye" on the broken output — re-check it on correct data.**
+- **Shuttle circle is drawn from `an.view`** (`smoothPath`, rally.js), not `an.pos`: local quadratic fit ±4 frames
+  inside each flight, split at gaps, hits and > 120 px/frame jumps (TrackNet switching objects), plus a bisquare pass
+  against one-frame spikes. On correct data (`_full.mp4` 30–50 s) jitter (|2nd diff|, jumps excluded) 5.2 → 3.4
+  px/frame², mean offset from the detection 1.5 px. Analysis still uses `pos`.
 - **Still blobs are not the shuttle:** TrackNet locks onto static spots (net-post top, wall sign) for a few frames at a
   time, recurring at the same pixel; also a lying/held shuttle. `analyzeShuttle` 1b drops still runs (≥ 4 frames within
   4 px) lasting ≥ 0.5 s or recurring at the same spot ≥ 2 other times. Verified by eye on "หมู มาย…" (516,386 = net post).

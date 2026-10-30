@@ -166,7 +166,57 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     let end = last; while (end + 1 < N && pos[end + 1] && end - last < 3 * fps) end++;
     return { start: r.hits[0].frame, end: Math.max(end, last + Math.round(0.5 * fps)), hits: r.hits, serve: r.hits[0] };
   });
-  return { pos, hits, rallies: out };
+  return { pos, hits, rallies: out, view: smoothPath(pos, hits, { fps, width }) };
+}
+
+/**
+ * Display path for the shuttle circle. TrackNet's blob centres jitter by a few px from frame to frame (512×288
+ * heatmap, the blob's shape changes), so a circle drawn on them stepped. Local quadratic fit (±h frames, tricube
+ * weights) within each flight: windows stop at gaps, at jumps (TrackNet switching to another object, > 120 px/frame at
+ * 1280 wide) and at hit frames (a hit stays a sharp turn; the hit frame keeps its detected point). A second pass
+ * down-weights points far off the first fit (bisquare, 30 px) so a one-frame spike doesn't drag the circle.
+ * Analysis (hits, speed, rallies) keeps the unsmoothed `pos`.
+ */
+export function smoothPath(pos, hits, { fps = 30, width = 1280, h = Math.max(2, Math.round((4 * fps) / 30)) } = {}) {
+  const N = pos.length, k = width / 1280, jump = (120 * k * 30) / fps, c = 30 * k, cut = new Set(hits.map(x => x.frame));
+  const near = (j, m) => hyp(pos[j][0] - pos[m][0], pos[j][1] - pos[m][1]) <= jump;
+  const span = i => {
+    let a = i, b = i;
+    while (a > i - h && pos[a - 1] && !cut.has(a) && near(a - 1, a)) a--;
+    while (b < i + h && pos[b + 1] && !cut.has(b) && near(b, b + 1)) b++;
+    return [a, b];
+  };
+  // weighted least squares x(t) = c0 + c1·t (+ c2·t²) around t = 0; the fitted value there is c0
+  const fit = (i, a, b, rw) => {
+    const S = [0, 0, 0, 0, 0], X = [0, 0, 0], Y = [0, 0, 0];
+    let n = 0;
+    for (let j = a; j <= b; j++) {
+      const t = j - i, w = (1 - Math.abs(t / (h + 1)) ** 3) ** 3 * (rw ? rw[j] : 1);
+      if (w <= 0) continue;
+      n++;
+      for (let e = 0, tk = w; e <= 4; e++, tk *= t) { S[e] += tk; if (e <= 2) { X[e] += tk * pos[j][0]; Y[e] += tk * pos[j][1]; } }
+    }
+    if (n >= 5) {
+      const det = S[0] * (S[2] * S[4] - S[3] * S[3]) - S[1] * (S[1] * S[4] - S[3] * S[2]) + S[2] * (S[1] * S[3] - S[2] * S[2]);
+      const c0 = V => (V[0] * (S[2] * S[4] - S[3] * S[3]) - S[1] * (V[1] * S[4] - S[3] * V[2]) + S[2] * (V[1] * S[3] - S[2] * V[2])) / det;
+      if (Math.abs(det) > 1e-9) return [c0(X), c0(Y)];
+    }
+    const det = S[0] * S[2] - S[1] * S[1];
+    return n >= 3 && Math.abs(det) > 1e-9 ? [(X[0] * S[2] - X[1] * S[1]) / det, (Y[0] * S[2] - Y[1] * S[1]) / det] : null;
+  };
+  const spans = pos.map((p, i) => (p ? span(i) : null));
+  const pass = rw => pos.map((p, i) => {
+    if (!p || cut.has(i)) return p && [...p];
+    const [a, b] = spans[i];
+    return (b - a >= 2 && fit(i, a, b, rw)) || [...p];
+  });
+  const first = pass(null);
+  const rw = pos.map((p, i) => {
+    if (!p) return 0;
+    const r = hyp(p[0] - first[i][0], p[1] - first[i][1]) / c;
+    return r < 1 ? (1 - r * r) ** 2 : 0;
+  });
+  return pass(rw);
 }
 
 // ------------------------------------------------------------------ serves from the players (court lines)
@@ -299,7 +349,7 @@ const posNear = (pos, f, w = 5) => {
 };
 /** HUD state for frame i; badgeSecs = how long the shot-speed badge stays up after a hit (HudRenderer.badgeSecs). */
 export function shuttleStateAt(an, i, fps, badgeSecs = 1) {
-  const s = { pos: an.pos[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
+  const s = { pos: (an.view ?? an.pos)[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
   if (an.score) for (const e of an.score) { if (e.frame <= i) s.score = e; else break; }
   let rally = null;
   for (const r of an.rallies) { if (r.start <= i) rally = r; else break; }
@@ -313,7 +363,7 @@ export function shuttleStateAt(an, i, fps, badgeSecs = 1) {
     if (h.speed != null) {
       s.lastSpeed = h.speed;
       // pinned where the shot was hit (a badge following the shuttle was gone before it could be read)
-      s.speedLabel = i - h.frame < badgeSecs * fps ? { speed: h.speed, age: (i - h.frame) / fps, at: posNear(an.pos, h.frame) } : null;
+      s.speedLabel = i - h.frame < badgeSecs * fps ? { speed: h.speed, age: (i - h.frame) / fps, at: posNear(an.view ?? an.pos, h.frame) } : null;
     }
   }
   return s;
