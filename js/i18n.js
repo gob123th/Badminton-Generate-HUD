@@ -11,6 +11,7 @@ const DICT = {
     'noWebCodecs': 'เบราว์เซอร์นี้ไม่รองรับ WebCodecs — กรุณาใช้ Chrome หรือ Edge รุ่นล่าสุด',
 
     'step.video': 'วิดีโอ', 'step.court': 'สนาม', 'step.players': 'ผู้เล่น', 'step.render': 'สร้างวิดีโอ',
+    'nav.back': '← ย้อนกลับ', 'nav.next': 'ถัดไป →',
     'drop': 'ลากไฟล์วิดีโอมาวาง หรือคลิกเพื่อเลือก',
     'opening': 'กำลังเปิด {name}…',
     'videoInfo': '{w}×{h} · {fps} fps · {dur} นาที · {codec}',
@@ -98,6 +99,7 @@ const DICT = {
     'noWebCodecs': 'This browser lacks WebCodecs — please use the latest Chrome or Edge',
 
     'step.video': 'Video', 'step.court': 'Court', 'step.players': 'Players', 'step.render': 'Render',
+    'nav.back': '← Back', 'nav.next': 'Next →',
     'drop': 'Drop a video file here, or click to choose',
     'opening': 'Opening {name}…',
     'videoInfo': '{w}×{h} · {fps} fps · {dur} min · {codec}',

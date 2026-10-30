@@ -45,9 +45,37 @@ const range = () => {
   const end = Math.min(Math.max(+$('end').value || d, start), d);
   return { start, end };
 };
+// wizard: one step visible; the stepper and the back / next buttons switch, next only once the step before is done
+const STEPS = ['video', 'court', 'players', 'render'];
+const missing = step => {          // i18n key of the first thing a step needs, or null
+  const k = STEPS.indexOf(step);
+  if (k >= 1 && !state.vid) return 'needVideo';
+  if (k >= 2 && !stage.court()) return 'needCourt';
+  if (k >= 3 && !state.cfg.players.length) return 'needPlayer';
+  return null;
+};
+function syncSteps() {
+  const done = { video: !!state.vid, court: !!(state.vid && stage.court()), players: state.cfg.players.length > 0, render: !!state.result };
+  document.querySelectorAll('#stepper [data-go]').forEach(b => {
+    b.classList.toggle('on', b.dataset.go === state.step); b.classList.toggle('done', done[b.dataset.go]);
+  });
+}
+function go(step) {
+  if (state.busy || step === state.step) return;
+  const need = missing(step);
+  if (need && STEPS.indexOf(step) > STEPS.indexOf(state.step)) {
+    toast(t(need));
+    return activate({ needVideo: 'video', needCourt: 'court', needPlayer: 'players' }[need]);
+  }
+  activate(step);
+}
+document.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => go(b.dataset.go); });
+
 function activate(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.dataset.step === step));
   state.step = step;
+  syncSteps();
+  document.querySelector('.panel').scrollTop = 0;
   if (state.busy) return;
   setTitle(() => t(state.vid ? `title.${step}` : 'title.empty'));
   if (step === 'render' && state.frame) { openLayout(); return; }   // step 4: drag / resize the HUD panels
@@ -105,6 +133,7 @@ function crop(src, box, kind) {
 }
 
 function renderCards() {
+  syncSteps();
   const box = $('cards');
   box.innerHTML = '';
   state.cfg.players.forEach((p, i) => {
@@ -298,7 +327,7 @@ $('orientation').onchange = e => { state.cfg.court.orientation = e.target.value;
 async function loadVideo(file) {
   if (state.busy) return;
   setText('drop-text', () => t('opening', { name: file.name }));
-  try { state.vid = await openVideo(file); }
+  try { state.vid = await openVideo(file); state.result = null; }
   catch (e) { setText('drop-text', () => t('drop')); toast(e.message, 8000); return; }
   const v = state.vid;
   setText('drop-text', '📹 ' + file.name);
@@ -352,6 +381,7 @@ $('btn-full').onclick = () => { if (!state.vid) return; $('start').value = 0; $(
 // ------------------------------------------------------------------ court
 let hadCourt = false;
 function onCourtChange() {
+  syncSteps();
   if (!state.vid) return;
   const n = stage.points.length;
   if (n < 4) { hadCourt = false; setStatus('court-status', () => t('court.click', { n: n + 1 }), 'warn'); return; }
@@ -508,7 +538,7 @@ $('btn-render').onclick = async () => {
   layoutEd.close();
   state.busy = true; state.abort = new AbortController();
   $('btn-render').disabled = true; $('btn-cancel').disabled = false; $('downloads').innerHTML = '';
-  document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.dataset.step === 'render'));
+  activate('render');
   const out = $('out');
   $('stage').hidden = true; out.hidden = false;
   setTitle(() => t('title.processing'));
@@ -545,7 +575,7 @@ $('btn-render').onclick = async () => {
       + (scf ? t('doneScore', { a: scf.A, b: scf.B }) : '') + (sh ? t('doneShuttle', { r: sh.rallies.length, s: sh.shots.length }) : '')
       + (res.highlight ? t('doneHighlight', { n: res.highlight.clips, s: res.highlight.duration_s }) : ''), 'ok');
     setTitle(() => t('title.result'));
-    window.__lastResult = res;
+    window.__lastResult = state.result = res;
     toast(t('doneToast'));
   } catch (e) {
     console.error(e);
@@ -557,10 +587,6 @@ $('btn-render').onclick = async () => {
   }
 };
 $('btn-cancel').onclick = () => state.abort?.abort();
-// any interaction inside a step (heading, buttons, inputs) makes it the active step, so the stage mode follows
-document.querySelectorAll('.step').forEach(sec => sec.addEventListener('pointerdown', () => {
-  if (!sec.classList.contains('active')) activate(sec.dataset.step);
-}));
 
 // ------------------------------------------------------------------ language
 const syncLangButtons = () => document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === getLang()));

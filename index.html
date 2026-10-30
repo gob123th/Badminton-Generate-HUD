@@ -32,6 +32,12 @@
 
   <main class="layout">
     <aside class="panel">
+      <nav class="stepper" id="stepper">
+        <button data-go="video"><i>1</i><span data-i18n="step.video"></span></button>
+        <button data-go="court"><i>2</i><span data-i18n="step.court"></span></button>
+        <button data-go="players"><i>3</i><span data-i18n="step.players"></span></button>
+        <button data-go="render"><i>4</i><span data-i18n="step.render"></span></button>
+      </nav>
       <section class="step" data-step="video">
         <h2><i>1</i><span data-i18n="step.video"></span></h2>
         <label class="drop" id="drop">
@@ -46,6 +52,9 @@
         <div class="row">
           <button class="ghost" id="btn-test15" data-i18n="test15"></button>
           <button class="ghost" id="btn-full" data-i18n="full"></button>
+        </div>
+        <div class="step-nav">
+          <button class="primary" data-go="court" data-i18n="nav.next"></button>
         </div>
       </section>
 
@@ -65,6 +74,10 @@
         </div>
         <p class="hint" data-i18n="court.hint"></p>
         <div id="court-status" class="status"></div>
+        <div class="step-nav">
+          <button class="ghost" data-go="video" data-i18n="nav.back"></button>
+          <button class="primary" data-go="players" data-i18n="nav.next"></button>
+        </div>
       </section>
 
       <section class="step" data-step="players">
@@ -85,6 +98,10 @@
         <div class="row">
           <button class="ghost" id="btn-export">Export config</button>
           <label class="ghost button">Import<input type="file" id="import" accept=".json" hidden></label>
+        </div>
+        <div class="step-nav">
+          <button class="ghost" data-go="court" data-i18n="nav.back"></button>
+          <button class="primary" data-go="render" data-i18n="nav.next"></button>
         </div>
       </section>
 
@@ -227,6 +244,9 @@
           <button class="primary" id="btn-review-ok" data-i18n="rv.ok"></button>
         </div>
         <div id="downloads" class="row"></div>
+        <div class="step-nav">
+          <button class="ghost" data-go="players" data-i18n="nav.back"></button>
+        </div>
       </section>
     </aside>
 

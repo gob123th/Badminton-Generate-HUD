@@ -28,7 +28,8 @@ Open in Chrome/Edge (needs WebGPU + WebCodecs; Safari not supported). `file://` 
 index.html        UI shell + importmap (CDN libs pinned: onnxruntime-web@1.30.0, mediabunny@1.60.0)
 css/style.css     Dark navy UI; design tokens in :root; Kanit (UI/Thai) + Bebas Neue (numbers)
 js/i18n.js        UI strings TH/EN: t(key, vars), data-i18n / data-i18n-title / data-i18n-aria, lang in localStorage bhud.lang
-js/app.js         UI controller: steps 1 วิดีโอ → 2 สนาม → 3 ผู้เล่น (cards) → 4 สร้างวิดีโอ; model loading; progress
+js/app.js         UI controller: wizard 1 วิดีโอ → 2 สนาม → 3 ผู้เล่น (cards) → 4 สร้างวิดีโอ — one step visible, stepper +
+                  back/next (`go()`: next only when `missing(step)` is null: video, court, ≥ 1 player); model loading; progress
 js/config.js      DEFAULT_CONFIG (players: [] — never preset names), localStorage (key bhud.config.v3; v2 migrated minus players), corners per file, import/export JSON
 js/stage.js       Interactive canvas: 'calibrate' (click/drag 4 court corners, padded border for off-frame corners) / 'assign'
 js/court.js       Court model (13.4 × 6.1 m, net y=6.7), 4-point homography image↔court, court lines
