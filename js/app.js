@@ -98,7 +98,9 @@ function crop(src, box, kind) {
   g.fillStyle = '#0b1730'; g.fillRect(0, 0, ow, oh);
   const k = Math.min(ow / sw, oh / sh);
   g.drawImage(src, sx, sy, sw, sh, (ow - sw * k) / 2, (oh - sh * k) / 2, sw * k, sh * k);
-  return c.toDataURL('image/jpeg', 0.85);
+  const url = c.toDataURL('image/jpeg', 0.85);
+  c.width = c.height = 0;            // free the backing store now, not at GC (WebKit canvas memory limit)
+  return url;
 }
 
 function renderCards() {
@@ -299,8 +301,10 @@ async function refreshFrame(sec = range().start) {
   $('pick-t').value = $('pick-n').value = sec.toFixed(1);
   const src = await grabFrame(state.vid, sec);
   if (!src) { toast(t('frameAtErr', { t: sec.toFixed(1) })); return; }
-  const c = document.createElement('canvas');
-  c.width = src.width; c.height = src.height;
+  // one frame canvas for the whole session: WebKit (every iOS browser) keeps old canvases' memory until GC and blanks
+  // canvases past its total limit — a new 4K canvas per picked frame added ~33 MB each
+  const c = state.frame || document.createElement('canvas');
+  if (c.width !== src.width || c.height !== src.height) { c.width = src.width; c.height = src.height; }
   c.getContext('2d').drawImage(src, 0, 0);
   state.frame = c; state.frameT = +sec.toFixed(3);
   state.dets = []; stage.dets = []; stage.labels.clear();

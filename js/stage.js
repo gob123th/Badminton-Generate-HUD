@@ -2,6 +2,8 @@
 import { Court, orderCorners } from './court.js';
 import { t } from './i18n.js';
 
+const MAX_PX = 2560 * 1440;   // display canvas cap: a 4K frame + border was ~16 M px (WebKit/iOS canvas memory limit)
+
 
 export class Stage {
   constructor(canvas, { onChange } = {}) {
@@ -17,6 +19,7 @@ export class Stage {
     this.onPickDet = null;
     this.drag = -1;
     this.padPx = 0;
+    this.k = 1;                  // canvas px per frame px (< 1 for big frames, see MAX_PX)
     canvas.addEventListener('pointerdown', e => this.down(e));
     canvas.addEventListener('pointermove', e => this.move(e));
     window.addEventListener('pointerup', () => {
@@ -44,11 +47,11 @@ export class Stage {
   setMode(mode) { this.mode = mode; this.fitPad(); this.draw(); }
 
   toImage(e) {
-    const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / r.width;
+    const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / this.k / r.width;
     return [(e.clientX - r.left) * k - this.pad, (e.clientY - r.top) * k - this.pad];
   }
   // image px per CSS px, so handles stay the same on-screen size on a phone and a desktop
-  unit() { const w = this.canvas.getBoundingClientRect().width; return w ? this.canvas.width / w : 1; }
+  unit() { const w = this.canvas.getBoundingClientRect().width; return w ? this.canvas.width / this.k / w : 1; }
   hitRadius(e) { return (e.pointerType === 'touch' ? 28 : 14) * this.unit(); }
 
   down(e) {
@@ -93,7 +96,10 @@ export class Stage {
     const f = this.frame, ctx = this.ctx;
     if (!f) return;
     const pad = this.pad, W = f.width + pad * 2, H = f.height + pad * 2;
-    if (this.canvas.width !== W || this.canvas.height !== H) { this.canvas.width = W; this.canvas.height = H; }
+    this.k = Math.min(1, Math.sqrt(MAX_PX / (W * H)));   // drawing stays in frame px, scaled down to the canvas
+    const cw = Math.round(W * this.k), ch = Math.round(H * this.k);
+    if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
+    ctx.setTransform(this.k, 0, 0, this.k, 0, 0);
     ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(f, pad, pad);
     const s = f.height / 720;
@@ -131,7 +137,8 @@ export class Stage {
   // magnified view of the dragged corner, in the top corner away from it
   drawLoupe([x, y]) {
     const ctx = this.ctx, u = this.unit(), D = 120 * u, zoom = 3, r = D / 2 / zoom, m = 8 * u;
-    const cx = x + this.pad < this.canvas.width / 2 ? this.canvas.width - m - D / 2 : m + D / 2, cy = m + D / 2;
+    const CW = this.canvas.width / this.k;
+    const cx = x + this.pad < CW / 2 ? CW - m - D / 2 : m + D / 2, cy = m + D / 2;
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, D / 2, 0, Math.PI * 2); ctx.fillStyle = '#0b1220'; ctx.fill(); ctx.clip();
     ctx.drawImage(this.frame, x - r, y - r, 2 * r, 2 * r, cx - D / 2, cy - D / 2, D, D);   // raw frame: the dot would hide the target
