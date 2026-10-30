@@ -17,7 +17,18 @@ export function courtLines() {
   ];
 }
 
-/** Court-meter targets for clicked image corners TL, TR, BR, BL. */
+/** 4 image corners in any click order → TL, TR, BR, BL: clockwise on screen from the left end of the top edge
+ *  (a click order like TL, TR, BL, BR made a bow-tie and crossed lines). Other lengths are returned as is. */
+export function orderCorners(pts) {
+  if (pts.length !== 4) return pts;
+  const cx = pts.reduce((s, p) => s + p[0], 0) / 4, cy = pts.reduce((s, p) => s + p[1], 0) / 4;
+  const cw = [...pts].sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));   // y down → clockwise
+  let top = 0;                       // edge top → top+1 with the smallest mean y
+  for (let i = 1; i < 4; i++) if (cw[i][1] + cw[(i + 1) % 4][1] < cw[top][1] + cw[(top + 1) % 4][1]) top = i;
+  return [0, 1, 2, 3].map(k => cw[(top + k) % 4]);
+}
+
+/** Court-meter targets for image corners TL, TR, BR, BL. */
 function courtTargets(orientation) {
   const W = COURT_W, L = COURT_L;
   return orientation === 'side'
@@ -71,6 +82,7 @@ export function applyH(H, x, y) {
 
 export class Court {
   constructor(corners, orientation = 'behind', marginM = 1.2) {
+    corners = orderCorners(corners);
     this.corners = corners;
     this.orientation = orientation;
     this.margin = marginM;

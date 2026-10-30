@@ -3,6 +3,7 @@
 const DICT = {
   th: {
     'browser.warn': '⚠️ เบราว์เซอร์นี้ยังไม่รองรับ — กรุณาเปิดด้วย <b>Google Chrome</b> (หรือ Microsoft Edge) บนคอมพิวเตอร์',
+    'browser.ios': '⚠️ iPhone / iPad ยังไม่รองรับ — ทุกเบราว์เซอร์บน iOS (รวม Chrome) ใช้เอนจินของ Safari ซึ่งยังไม่ได้ทดสอบ และหน่วยความจำอาจไม่พอสำหรับประมวลผลวิดีโอ หน้าอาจค้างหรือปิดตัวเอง กรุณาเปิดด้วย <b>Chrome / Edge บนคอมพิวเตอร์</b>',
     'close': 'ปิด',
     'sub': 'สร้างวิดีโอแบดมินตันสไตล์ถ่ายทอดสด · ประมวลผลในเครื่องคุณ ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์',
     'badge.checking': 'ตรวจสอบ GPU…',
@@ -20,7 +21,7 @@ const DICT = {
     'orientation': 'มุมกล้อง',
     'orient.behind': 'หลัง/เฉียงหลังเส้นท้าย (เน็ตแนวนอน)', 'orient.side': 'ข้างสนาม (เน็ตแนวตั้ง)',
     'undo': 'ย้อนจุดล่าสุด', 'reset': 'เริ่มใหม่',
-    'court.hint': 'คลิก <b>มุมนอกของสนามคู่</b> 4 มุมตามลำดับ <b>ซ้ายบน → ขวาบน → ขวาล่าง → ซ้ายล่าง</b> ตามที่เห็นในภาพ (มุมที่อยู่นอกภาพคลิกในขอบสีเข้มได้) ลากจุดเพื่อปรับ (ครบ 4 จุดแล้วคลิกตรงไหนก็ได้ มุมที่ใกล้สุดจะย้ายมา) ให้เส้นเขียวทับเส้นสนามจริง',
+    'court.hint': 'คลิก <b>มุมนอกของสนามคู่</b> ทั้ง 4 มุมตามที่เห็นในภาพ <b>ลำดับไหนก็ได้</b> ระบบเรียงให้เอง (มุมที่อยู่นอกภาพคลิกในขอบสีเข้มได้) ลากจุดเพื่อปรับ (ครบ 4 จุดแล้วคลิกตรงไหนก็ได้ มุมที่ใกล้สุดจะย้ายมา) ให้เส้นเขียวทับเส้นสนามจริง',
     'court.click': 'คลิกมุมที่ {n}/4', 'court.bad': 'มุมสนามไม่ถูกต้อง ลองคลิกใหม่',
     'court.ok': '✓ ตั้งค่าสนามแล้ว — ตรวจดูว่าเส้นเขียวทับเส้นสนามจริง',
     'corner.0': 'ซ้ายบน', 'corner.1': 'ขวาบน', 'corner.2': 'ขวาล่าง', 'corner.3': 'ซ้ายล่าง',
@@ -85,6 +86,7 @@ const DICT = {
   },
   en: {
     'browser.warn': '⚠️ This browser is not supported — please open the app in <b>Google Chrome</b> (or Microsoft Edge) on a computer',
+    'browser.ios': '⚠️ iPhone / iPad is not supported — every iOS browser (Chrome included) runs on Safari\'s engine, which is untested and may run out of memory processing video; the page may freeze or reload. Please use <b>Chrome / Edge on a computer</b>',
     'close': 'Close',
     'sub': 'Broadcast-style badminton video · processed on your computer, nothing is uploaded',
     'badge.checking': 'Checking GPU…',
@@ -102,7 +104,7 @@ const DICT = {
     'orientation': 'Camera angle',
     'orient.behind': 'Behind / angled behind the baseline (net horizontal)', 'orient.side': 'Side of the court (net vertical)',
     'undo': 'Undo last point', 'reset': 'Start over',
-    'court.hint': 'Click the <b>4 outer corners of the doubles court</b> in order <b>top-left → top-right → bottom-right → bottom-left</b> as seen in the image (corners outside the frame can be clicked in the dark border). Drag points to adjust (with all 4 placed, clicking anywhere moves the nearest corner) until the green lines sit on the real court lines.',
+    'court.hint': 'Click the <b>4 outer corners of the doubles court</b> as seen in the image, <b>in any order</b> — they are sorted for you (corners outside the frame can be clicked in the dark border). Drag points to adjust (with all 4 placed, clicking anywhere moves the nearest corner) until the green lines sit on the real court lines.',
     'court.click': 'Click corner {n}/4', 'court.bad': 'Invalid court corners — try clicking again',
     'court.ok': '✓ Court set — check that the green lines sit on the real court lines',
     'corner.0': 'Top-left', 'corner.1': 'Top-right', 'corner.2': 'Bottom-right', 'corner.3': 'Bottom-left',

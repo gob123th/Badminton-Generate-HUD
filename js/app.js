@@ -3,7 +3,7 @@ import { openVideo, grabFrame, renderVideo } from './pipeline.js';
 import { PoseDetector } from './detector.js';
 import { ShuttleTracker } from './shuttle.js';
 import { footPoint, torsoHist, similarity } from './players.js';
-import { Court } from './court.js';
+import { Court, orderCorners } from './court.js';
 import { Stage } from './stage.js';
 import { loadFonts, layoutKey } from './hud.js';
 import { buildScore } from './rally.js';
@@ -73,8 +73,12 @@ async function openLayout() {
   setText('badge-gpu', () => `${gpu ? 'WebGPU ✓' : t('badge.noGpu')} · ${enc ? 'WebCodecs ✓' : 'WebCodecs ✗'}`, `badge ${gpu && enc ? 'ok' : 'warn'}`);
   if (!enc) toast(t('noWebCodecs'), 8000);
 })();
-// only Chromium (Chrome/Edge) is tested; Safari, Firefox and every iOS browser (WebKit) lack userAgentData
-if (!navigator.userAgentData?.brands?.some(b => b.brand === 'Chromium')) {
+// only Chromium (Chrome/Edge) is tested; Safari, Firefox and every iOS browser (WebKit) lack userAgentData.
+// iOS gets its own text: "open in Chrome" made no sense to people already in Chrome for iOS (WebKit underneath).
+// iPadOS asks for desktop sites and reports MacIntel, but has touch.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (IOS || !navigator.userAgentData?.brands?.some(b => b.brand === 'Chromium')) {
+  if (IOS) document.querySelector('#browser-warn [data-i18n]').dataset.i18n = 'browser.ios';
   $('browser-warn').hidden = false;
   $('browser-warn-x').onclick = () => { $('browser-warn').hidden = true; };
 }
@@ -284,7 +288,7 @@ async function loadVideo(file) {
   $('start').value = 0; $('end').value = v.duration.toFixed(1); $('start').max = $('end').max = v.duration;
   $('pick-t').max = $('pick-n').max = v.duration;
   $('empty').hidden = true;
-  stage.points = loadCorners(v) || [];
+  stage.points = orderCorners(loadCorners(v) || []);   // corners saved before auto-ordering may be in click order
   stage.orientation = state.cfg.court.orientation;
   await refreshFrame();
   onCourtChange();

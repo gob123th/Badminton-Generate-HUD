@@ -1,5 +1,5 @@
 // Interactive frame view: court calibration (click/drag 4 corners) and player assignment (click a box).
-import { Court } from './court.js';
+import { Court, orderCorners } from './court.js';
 import { t } from './i18n.js';
 
 
@@ -19,7 +19,11 @@ export class Stage {
     this.padPx = 0;
     canvas.addEventListener('pointerdown', e => this.down(e));
     canvas.addEventListener('pointermove', e => this.move(e));
-    window.addEventListener('pointerup', () => { if (this.drag >= 0) { this.drag = -1; this.draw(); this.onChange?.(); } });
+    window.addEventListener('pointerup', () => {
+      if (this.drag < 0) return;
+      this.drag = -1; this.points = orderCorners(this.points);   // any click order; saved as TL, TR, BR, BL
+      this.draw(); this.onChange?.();
+    });
   }
 
   get pad() { return this.mode === 'calibrate' ? this.padPx : 0; }
@@ -99,11 +103,12 @@ export class Stage {
       const court = this.court(), u = this.unit();
       if (court) court.drawLines(ctx, '#39ff88', Math.max(2 * s, 1.5 * u));
       ctx.font = `${Math.round(13 * u)}px "Kanit", sans-serif`;
+      const ord = orderCorners(this.points);   // corner names only once all 4 are set (click order is free)
       this.points.forEach(([x, y], i) => {
         ctx.fillStyle = i === this.drag ? '#ffc400' : '#00E5FF'; ctx.strokeStyle = '#04121f'; ctx.lineWidth = 2 * u;
         ctx.beginPath(); ctx.arc(x, y, 7 * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 3 * u;
-        const label = `${i + 1} ${t(`corner.${i}`)}`;
+        const label = ord.length === 4 ? t(`corner.${ord.indexOf(this.points[i])}`) : String(i + 1);
         ctx.strokeText(label, x + 10 * u, y - 9 * u); ctx.fillText(label, x + 10 * u, y - 9 * u);
       });
     } else if (this.mode === 'assign') {

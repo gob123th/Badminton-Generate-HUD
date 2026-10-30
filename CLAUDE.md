@@ -76,6 +76,11 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 
 ## Domain rules & gotchas (learned the hard way)
 - **First frame timestamp may be > 0** (e.g. 0.033 s). `CanvasSink.getCanvas(0)` then returns null. Always clamp to `vid.firstTs` (see `grabFrame`).
+- **Corner click order is free:** `orderCorners` (court.js, also applied in the `Court` constructor) sorts the 4 points
+  clockwise from the top edge's left end → TL, TR, BR, BL; the stage re-sorts on release and labels the corners then.
+  A user clicked TL, TR, BL, BR → bow-tie homography and crossed lines.
+- **iOS (any browser, Chrome included = WebKit):** not supported; the banner says so (`browser.ios`) instead of "open in
+  Chrome". A user's iPhone tab crashed ("Can't open this page") in step 3 — not reproduced here (no WebKit/iPhone).
 - **Court coords:** x = width 0..6.1 (left→right seen from the near baseline), y = 0 far baseline → 13.4 near baseline.
   `orientation: 'behind'` = corners clicked TL,TR,BR,BL map to far-left, far-right, near-right, near-left. `'side'` rotates.
 - **One detector session:** app queues detection runs and rendering awaits them — a render started while the auto-detect
