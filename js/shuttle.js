@@ -48,7 +48,7 @@ export class ShuttleTracker {
   /** Only accept shuttles inside this image polygon (full-res px), e.g. Court.airPolygon(); null = whole frame. */
   setRegion(poly, W, H) { this.mask = regionMask(poly, W, H); }
 
-  /** Add a frame; returns [{frame, pos:[x,y]|null}] (full-res px) when a batch of 8 is complete. */
+  /** Add a frame; returns [{frame, pos:[x,y]|null, cands:[[x,y,area],…]}] (full-res px) when a batch of 8 is complete. */
   async push(source, frameIndex, W, H) {
     const P = this.plane, slot = this.queue.length, off = 3 * (slot + 1) * P;
     this.ctx.drawImage(source, 0, 0, TN_W, TN_H);
@@ -71,7 +71,10 @@ export class ShuttleTracker {
     const frames = this.queue; this.queue = [];
     const out = await this.session.run({ [this.session.inputNames[0]]: new ort.Tensor('float32', this.input, [1, 3 * (TN_SEQ + 1), TN_H, TN_W]) });
     const hm = out[this.session.outputNames[0]].data, P = this.plane;
-    const res = frames.map((f, k) => ({ frame: f, pos: blobCenter(hm, k * P, W / TN_W, H / TN_H, this.mask) }));
+    const res = frames.map((f, k) => {
+      const cands = blobs(hm, k * P, W / TN_W, H / TN_H, this.mask);
+      return { frame: f, pos: cands[0]?.slice(0, 2) ?? null, cands };
+    });
     for (const t of Object.values(out)) t.dispose?.();
     return res;
   }
@@ -115,7 +118,7 @@ export class WasbTracker {
   reset() { this.queue = []; this.prev = null; }
   setRegion(poly, W, H) { this.mask = regionMask(poly, W, H); }
 
-  /** Add a frame; returns [{frame, pos:[x,y]|null}] (full-res px) when a batch of 3 is complete. */
+  /** Add a frame; returns [{frame, pos:[x,y]|null, cands:[[x,y,heat],…]}] (full-res px) when a batch of 3 is complete. */
   async push(source, frameIndex, W, H) {
     const P = this.plane, off = 3 * this.queue.length * P;
     this.ctx.drawImage(source, 0, 0, TN_W, TN_H);
@@ -139,11 +142,13 @@ export class WasbTracker {
     const out = await this.session.run({ [this.session.inputNames[0]]: new ort.Tensor('float32', this.input, [1, 3 * WB_SEQ, TN_H, TN_W]) });
     const hm = out[this.session.outputNames[0]].data, P = this.plane, gate = 300 * W / 1280;
     const res = frames.map((f, k) => {
-      let c = heatBlobs(hm, k * P, W / TN_W, H / TN_H, this.mask);
+      const all = heatBlobs(hm, k * P, W / TN_W, H / TN_H, this.mask);
+      let c = all;
       if (this.prev) c = c.filter(b => Math.hypot(b.x - this.prev[0], b.y - this.prev[1]) < gate);
       const best = c.reduce((a, b) => (!a || b.score > a.score ? b : a), null);
       this.prev = best && [best.x, best.y];
-      return { frame: f, pos: this.prev };
+      const cands = all.sort((a, b) => b.score - a.score).slice(0, MAX_CANDS).map(b => [b.x, b.y, b.score]);
+      return { frame: f, pos: this.prev, cands };
     });
     for (const o of Object.values(out)) o.dispose?.();
     return res;
@@ -174,12 +179,15 @@ function heatBlobs(hm, off, sx, sy, mask) {
   return res;
 }
 
-// largest connected region of heatmap > 0.5 → bbox center (same as TrackNetV3 predict_location),
-// skipping regions whose center is outside the court mask
+// connected regions of heatmap > 0.5 → bbox center (as TrackNetV3 predict_location, which keeps only the largest),
+// skipping regions whose center is outside the court mask; [[x, y, area], …] largest first, at most MAX_CANDS.
+// All of them go to analyzeShuttle: when our shuttle and a neighbouring court's are both visible, the largest
+// is often the wrong one.
+const MAX_CANDS = 5;
 const seen = new Uint8Array(TN_W * TN_H), stack = new Int32Array(TN_W * TN_H);
-function blobCenter(hm, off, sx, sy, mask) {
+function blobs(hm, off, sx, sy, mask) {
   seen.fill(0);
-  let best = null, bestA = 0;
+  const res = [];
   for (let p = 0; p < TN_W * TN_H; p++) {
     if (hm[off + p] <= 0.5 || seen[p]) continue;
     let sp = 0, a = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
@@ -193,8 +201,8 @@ function blobCenter(hm, off, sx, sy, mask) {
         seen[r] = 1; stack[sp++] = r;
       }
     }
-    if (a <= bestA || (mask && !mask[((y0 + y1) >> 1) * TN_W + ((x0 + x1) >> 1)])) continue;
-    bestA = a; best = [((x0 + x1 + 1) / 2) * sx, ((y0 + y1 + 1) / 2) * sy];
+    if (mask && !mask[((y0 + y1) >> 1) * TN_W + ((x0 + x1) >> 1)]) continue;
+    res.push([((x0 + x1 + 1) / 2) * sx, ((y0 + y1 + 1) / 2) * sy, a]);
   }
-  return best;
+  return res.sort((u, v) => v[2] - u[2]).slice(0, MAX_CANDS);
 }

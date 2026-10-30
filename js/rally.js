@@ -6,13 +6,132 @@ function zoneDist(x, y, b) {
   return hyp(x - cx, y - cy) / bh;
 }
 
+/** (x, y) in a racket zone (0.6 box heights past the upper body ≈ arm + racket): +1 ours, -1 someone else's, 0 none */
+function zoneVote(x, y, mine, theirs) {
+  const d = Math.min(Infinity, ...(mine || []).map(b => zoneDist(x, y, b)));
+  const e = Math.min(Infinity, ...(theirs || []).map(b => zoneDist(x, y, b)));
+  return d < 0.6 && d <= e ? 1 : e < 0.6 && e < d ? -1 : 0;
+}
+
+function hull(pts) {                 // monotone-chain convex hull
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = list => {
+    const h = [];
+    for (const q of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop(); h.push(q); }
+    h.pop(); return h;
+  };
+  return [...half(p), ...half(p.reverse())];
+}
+const inHull = (h, x, y) => h.every((a, j) => { const b = h[(j + 1) % h.length]; return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) >= 0; });
+
+/**
+ * Play volume: the air a shuttle hit between our players can be in. Our shuttle flies from one of our players to one
+ * on the other side, so at frame i it is above the floor around them: their court positions over [i − 0.5 s, i + 1 s]
+ * (the receiver is still on the way), grown by `grow` m, up to `height` m (straight up in the image at the floor's
+ * scale, as Court.airPolygon). Returns i → image hull, or null without players on both sides of the net.
+ */
+export function playVolume(boxes, toImg, { fps = 30, grow = 1.5, height = 8 } = {}) {
+  const cache = new Map(), step = Math.max(1, Math.round(fps / 10));
+  return i => {
+    if (cache.has(i)) return cache.get(i);
+    const floor = [];
+    let far = false, near = false;
+    for (let j = Math.max(0, i - Math.round(0.5 * fps)); j <= Math.min(boxes.length - 1, i + fps); j += step) {
+      for (const b of boxes[j] || []) {
+        if (b.length < 7) continue;
+        if (b[6] < 6.7) far = true; else near = true;
+        for (const [dx, dy] of [[-grow, -grow], [grow, -grow], [grow, grow], [-grow, grow]]) floor.push([b[5] + dx, b[6] + dy]);
+      }
+    }
+    let h = null;
+    if (far && near) {
+      const img = [];
+      for (const [x, y] of hull(floor)) {
+        const p = toImg(x, y), ax = toImg(x + 1, y), ay = toImg(x, y + 1);
+        const ppm = Math.max(hyp(ax[0] - p[0], ax[1] - p[1]), hyp(ay[0] - p[0], ay[1] - p[1]));
+        img.push(p, [p[0], p[1] - ppm * height]);
+      }
+      if (img.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))) h = hull(img);
+    }
+    cache.set(i, h);
+    return h;
+  };
+}
+
+/**
+ * Our shuttle among each frame's heatmap blobs (cands[i] = [[x, y, strength], …], strongest first). TrackNet's own
+ * post-process keeps only the largest blob, which is a neighbouring court's shuttle (or a static white spot) whenever
+ * that one looks bigger. Blobs are linked frame to frame into tracklets (gap ≤ 3 frames, near where the tracklet's
+ * velocity predicts, never > 120 px/frame); every frame takes the blob whose tracklet looks most like ours:
+ *   evidence = 3 × (frames in our players' racket zones − frames in other people's)
+ *            + moving frames inside the play volume − moving frames outside it (a still blob earns nothing)
+ * ties → more moving frames, then the stronger blob. A tracklet with negative evidence is someone else's: the frame
+ * stays empty rather than take it. Without players (no zones, no volume) this is the longest moving tracklet.
+ */
+export function pickShuttle(cands, boxes, { fps = 30, width = 1280, others = [], vol = null } = {}) {
+  const N = cands.length, k = width / 1280, f = fps / 30, maxGap = Math.max(1, Math.round(3 * f));
+  const tracks = [], at = [];           // at[i] = [[track, cand], …]
+  let active = [];
+  for (let i = 0; i < N; i++) {
+    const C = cands[i] || [];
+    at[i] = [];
+    const pairs = [];
+    for (const t of active) {
+      const [li, lx, ly] = t.pts.at(-1), g = i - li;
+      const px = lx + t.v[0] * g, py = ly + t.v[1] * g, tol = (30 * k + 0.5 * hyp(t.v[0], t.v[1])) * g;
+      C.forEach((c, n) => {
+        const d = hyp(c[0] - px, c[1] - py);
+        if (d < tol && hyp(c[0] - lx, c[1] - ly) <= 120 * k * g / f) pairs.push([d, t, n]);
+      });
+    }
+    pairs.sort((a, b) => a[0] - b[0]);
+    const usedT = new Set(), usedC = new Set();
+    for (const [, t, n] of pairs) {
+      if (usedT.has(t) || usedC.has(n)) continue;
+      usedT.add(t); usedC.add(n);
+      const [li, lx, ly] = t.pts.at(-1), c = C[n], g = i - li, v = [(c[0] - lx) / g, (c[1] - ly) / g];
+      t.v = t.pts.length > 1 ? [(t.v[0] + v[0]) / 2, (t.v[1] + v[1]) / 2] : v;
+      t.pts.push([i, c[0], c[1]]);
+      at[i].push([t, c]);
+    }
+    C.forEach((c, n) => {
+      if (usedC.has(n)) return;
+      const t = { pts: [[i, c[0], c[1]]], v: [0, 0] };
+      tracks.push(t); active.push(t); at[i].push([t, c]);
+    });
+    active = active.filter(t => i - t.pts.at(-1)[0] < maxGap);
+  }
+  const still = 4 * k;
+  for (const t of tracks) {
+    let zone = 0, inside = 0, moving = 0;
+    t.pts.forEach(([i, x, y], j) => {
+      zone += zoneVote(x, y, boxes[i], others[i]);
+      if (!j || hyp(x - t.pts[j - 1][1], y - t.pts[j - 1][2]) < still) return;
+      moving++;
+      const h = vol?.(i);
+      if (h) inside += inHull(h, x, y) ? 1 : -1;
+    });
+    t.ev = 3 * zone + inside; t.moving = moving;
+  }
+  const better = (a, b) => (a[0].ev - b[0].ev) || (a[0].moving - b[0].moving) || (a[1][2] - b[1][2]);
+  return at.map(list => {
+    const best = list.reduce((a, b) => (!a || better(b, a) > 0 ? b : a), null);
+    return best && best[0].ev >= 0 ? [best[1][0], best[1][1]] : null;
+  });
+}
+
 /**
  * raw: per-frame shuttle position [x,y] | null (full-res px)
  * boxes: per-frame [[x1,y1,x2,y2,playerIdx,courtX,courtY], ...]
  * others: per-frame [[x1,y1,x2,y2], ...] people who are not our players (neighbouring courts); a shuttle nearer
  *         to one of them than to our players is theirs
+ * cands: per-frame heatmap blobs [[x, y, strength], …] (optional): `raw` is then picked from them (pickShuttle)
+ * toImg: court metres → image px (optional): play volume for pickShuttle
  */
-export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = [] } = {}) {
+export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = [], cands = null, toImg = null } = {}) {
+  const vol = toImg ? playVolume(boxes, toImg, { fps }) : null;
+  if (cands) raw = pickShuttle(cands, boxes, { fps, width, others, vol });
   const N = raw.length, k = width / 1280, f = fps / 30;
   const pos = raw.map(p => (p ? [...p] : null));
 
@@ -57,20 +176,13 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
   //     racket zones in more frames than in other people's (neighbouring courts; 1.2 box heights reached into
   //     the next court for near players), or — if nobody else's — when it continues a kept run within 0.5 s
   //     where that run's velocity predicts (mid-air parts after the shuttle was hidden by the hitter).
-  // frame i in a racket zone (0.6 box heights past the upper body ≈ arm + racket): +1 ours, -1 someone else's, 0 none
-  const zoneVote = i => {
-    const [x, y] = pos[i];
-    const d = Math.min(Infinity, ...(boxes[i] || []).map(b => zoneDist(x, y, b)));
-    const e = Math.min(Infinity, ...(others[i] || []).map(b => zoneDist(x, y, b)));
-    return d < 0.6 && d <= e ? 1 : e < 0.6 && e < d ? -1 : 0;
-  };
   if (boxes.some(f => f?.length)) {
     const jump = 200 * k / f, runs = [];
     for (let i = 0; i < N; i++) {
       if (!pos[i]) continue;
       let j = i, ours = 0, theirs = 0;
       do {
-        const v = zoneVote(j);
+        const v = zoneVote(pos[j][0], pos[j][1], boxes[j], others[j]);
         if (v > 0) ours++; else if (v < 0) theirs++;
         j++;
       } while (j < N && pos[j] && hyp(pos[j][0] - pos[j - 1][0], pos[j][1] - pos[j - 1][1]) <= jump);

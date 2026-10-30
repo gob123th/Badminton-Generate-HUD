@@ -101,6 +101,7 @@ export async function renderVideo(opts) {
   const stride = Math.max(1, cfg.model.stride | 0);
   const rois = court.farTiles(W, H);                  // zoomed passes for small far-side players
   const snaps = [], rawShuttle = [], rawAssist = [], boxes = [];
+  const cands = [], candsAssist = [];   // per frame: every blob [x, y, strength] (analyzeShuttle picks among them)
   const others = [];            // per frame: boxes of people who are not our players (neighbouring courts, spectators)
   let lastOthers = [];
   let n = 0, firstTs = null, canceled = false;
@@ -131,25 +132,25 @@ export async function renderVideo(opts) {
     });
     boxes.push(ps.filter(p => p.visible && p.box).map(p => [...p.box, p.idx, p.pos[0], p.pos[1]]));
     others.push(lastOthers);
-    rawShuttle.push(null);
-    if (useShuttle) for (const r of await shuttle.push(wc.canvas, n, W, H)) rawShuttle[r.frame] = r.pos;
-    if (useAssist) for (const r of await assist.push(wc.canvas, n, W, H)) rawAssist[r.frame] = r.pos;
+    rawShuttle.push(null); cands.push(null);
+    if (useShuttle) for (const r of await shuttle.push(wc.canvas, n, W, H)) { rawShuttle[r.frame] = r.pos; cands[r.frame] = r.cands; }
+    if (useAssist) for (const r of await assist.push(wc.canvas, n, W, H)) { rawAssist[r.frame] = r.pos; candsAssist[r.frame] = r.cands; }
     // live preview (players only; shuttle needs the whole trajectory first)
     hud.render(ctx, { ...snaps[n], stats: new StatView(snaps[n]), shuttle: null, preview: true });
     n++;
     report('analyze', (n / totalFrames) * P1, { frame: n, total: totalFrames });
   }
   if (canceled) return null;
-  if (useShuttle) for (const r of await shuttle.flush(W, H)) rawShuttle[r.frame] = r.pos;
+  if (useShuttle) for (const r of await shuttle.flush(W, H)) { rawShuttle[r.frame] = r.pos; cands[r.frame] = r.cands; }
   // WASB only fills frames where TrackNetV3 found nothing (TrackNetV3 stays the primary)
   let assisted = 0;
   if (useAssist) {
-    for (const r of await assist.flush(W, H)) rawAssist[r.frame] = r.pos;
-    for (let i = 0; i < rawShuttle.length; i++) if (!rawShuttle[i] && rawAssist[i]) { rawShuttle[i] = rawAssist[i]; assisted++; }
+    for (const r of await assist.flush(W, H)) { rawAssist[r.frame] = r.pos; candsAssist[r.frame] = r.cands; }
+    for (let i = 0; i < rawShuttle.length; i++) if (!rawShuttle[i] && rawAssist[i]) { rawShuttle[i] = rawAssist[i]; cands[i] = candsAssist[i]; assisted++; }
   }
   interpolateBetween(snaps, boxes, stride);   // detection every `stride` frames: smooth positions in between
 
-  const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W, others }) : null;
+  const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W, others, cands, toImg: (x, y) => court.toImg(x, y) }) : null;
   // rallies from serve to serve (players' positions vs the service lines) when serves were found; else hit chains
   const serves = an ? detectServes(boxes, { fps }) : [];
   if (serves.length >= 2) an.rallies = ralliesFromServes(an, serves, boxes, fps);
@@ -283,7 +284,7 @@ export async function renderVideo(opts) {
     blob: null,
     highlight: hl ? { blob: new Blob([hl.target.buffer], { type: 'video/mp4' }), clips: hl.spans.length, duration_s: +hl.duration.toFixed(1) } : null,
     analysis: an,   // debug: window.__lastResult.analysis (shuttle path, hits, rallies)
-    debug: { rawShuttle, boxes, others },   // inputs of analyzeShuttle, to replay rally.js offline in node
+    debug: { rawShuttle, boxes, others, cands, corners: court.corners, orientation: court.orientation },   // inputs of analyzeShuttle, to replay rally.js offline in node
   };
   if (!writable) result.blob = new Blob([target.buffer], { type: 'video/mp4' });
   return result;

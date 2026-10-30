@@ -37,8 +37,8 @@ js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints) + zoo
 js/bytetrack.js   ByteTrack port (Kalman xyah, two-stage association, greedy matching)
 js/players.js     Track → named player: known IDs, then court distance + shirt-colour histogram; hard court-side rule; EMA smoothing
 js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
-js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre;
-                  WasbTracker (assist): WASB 3 frames ImageNet-normalised → 3 heatmaps → heat-weighted blob + 300 px gate
+js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → every blob (≤ 5, `cands`);
+                  WasbTracker (assist): WASB 3 frames ImageNet-normalised → 3 heatmaps → heat-weighted blobs + 300 px gate
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
 js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, shuttle = faint circle
                   (`shuttleMark`; no trail, no LOCK ON — it was in the way), speed badge with game-style rank (SPEED_RANKS:
@@ -110,12 +110,21 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **Shot speed is an estimate:** hitter→receiver court distance D over flight time T, drag-corrected
   `v0 = L(e^{D/L} − 1)/T`, `L = vt²/g`, vt = 7 m/s, exponent capped at 2.2, T ≥ 0.25 s, must cross the net. Image-space speed was tried and is useless for this camera angle (motion is mostly in depth).
 - **Neighbouring courts' shuttles:** TrackNet blobs are masked to `Court.airPolygon()` (floor + 8 m) — with an oblique camera that
-  barely helps. The real filter is in `analyzeShuttle` 2b: runs (split at gaps and at > 200 px/frame jumps = TrackNet switching
+  barely helps. **`pickShuttle`** (rally.js) chooses among every blob of a frame (`cands`; TrackNet's own post-process keeps the
+  largest, which was often the next court's shuttle or a white spot while ours flew high): blobs are linked into tracklets,
+  evidence = 3 × (frames in our racket zones − in other people's) + moving frames inside − outside the **play volume**
+  (`playVolume`: our players' floor positions over −0.5…+1 s, + 1.5 m, up to 8 m; needs players on both sides), and a
+  tracklet with negative evidence leaves the frame empty. On "ต้า วา vs หมู ฟ้าช" 20–80 s (courts on both sides; 536 of
+  1800 frames had > 1 blob) kept shuttle frames 841 → 932, points outside the play volume 15 → 0; checked by eye on
+  one frame per changed run (new: high lobs over our court, old: next court's shuttle / player). "หมู มาย…" 200–260 s
+  (no neighbour in view): 31 frames had > 1 blob, 9 changed. Hits/speeds changed slightly — not checked one by one.
+  Then `analyzeShuttle` 2b: runs (split at gaps and at > 200 px/frame jumps = TrackNet switching
   courts) are kept when the shuttle sits in our players' racket zones (0.6 bh) in more frames than in *other* people's
   (`others` = detections that aren't our players, from pass 1); unclaimed mid-air runs are kept if they continue a kept run
   within 0.5 s along its velocity. Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip 200–240 s. Known loss: the apex of a
   high lob after TrackNet lost the rise (> 0.5 s) is dropped (shuttle-circle gap only; hits/score unaffected).
-  Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others}` to replay rally.js variants in the page or node.
+  Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others, cands, corners, orientation}` to replay rally.js in node
+  (`new Court(corners, orientation).toImg` for the play volume).
 - **Rallies come from serves** (`detectServes` / `ralliesFromServes`, rally.js) when ≥ 2 are found: before every serve the
   players stand still (mean speed < 0.35 m/s ≥ 0.7 s) with someone within 1.8 m behind a short service line, then all move.
   Verified by eye on "หมู มาย…" 0–120 s (serve/receive stances at each detected stretch). A rally = serve → hits chained
