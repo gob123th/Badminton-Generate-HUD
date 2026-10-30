@@ -183,3 +183,33 @@ export class PlayerTracker {
     return out;
   }
 }
+
+/**
+ * Detection every `stride` frames leaves players' positions held in between (rings step, racket zones lag up to
+ * stride - 1 frames). After pass 1, interpolate linearly between two detected frames where the player was seen in both:
+ * snapshot pos/head and the analysis boxes [x1, y1, x2, y2, idx, courtX, courtY]. Frames after the last detection hold.
+ */
+export function interpolateBetween(snaps, boxes, stride) {
+  if (stride <= 1) return;
+  const lerp = (a, b, f) => a.map((v, k) => v + (b[k] - v) * f);
+  for (let a = 0; a + stride < snaps.length; a += stride) {
+    const b = a + stride;
+    snaps[a].players.forEach((pa, pi) => {
+      const pb = snaps[b].players[pi];
+      for (let i = a + 1; i < b; i++) {
+        const p = snaps[i].players[pi], f = (i - a) / stride;
+        if (pa.pos && pb?.pos) p.pos = lerp(pa.pos, pb.pos, f);
+        if (pa.head && pb?.head) p.head = lerp(pa.head, pb.head, f);
+      }
+    });
+    for (const ba of boxes[a]) {
+      const bb = boxes[b].find(x => x[4] === ba[4]);
+      if (!bb) continue;
+      for (let i = a + 1; i < b; i++) {
+        const f = (i - a) / stride, v = [...lerp(ba.slice(0, 4), bb.slice(0, 4), f), ba[4], ...lerp(ba.slice(5), bb.slice(5), f)];
+        const j = boxes[i].findIndex(x => x[4] === ba[4]);
+        if (j >= 0) boxes[i][j] = v; else boxes[i].push(v);
+      }
+    }
+  }
+}

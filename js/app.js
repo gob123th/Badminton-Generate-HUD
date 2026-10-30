@@ -1,7 +1,7 @@
-import { loadConfig, saveConfig, importConfig, loadCorners, saveCorners } from './config.js';
+import { DEFAULT_CONFIG, loadConfig, saveConfig, importConfig, loadCorners, saveCorners } from './config.js';
 import { openVideo, grabFrame, renderVideo } from './pipeline.js';
 import { PoseDetector } from './detector.js';
-import { ShuttleTracker } from './shuttle.js';
+import { ShuttleTracker, WasbTracker } from './shuttle.js';
 import { footPoint, torsoHist, similarity } from './players.js';
 import { Court, orderCorners } from './court.js';
 import { Stage } from './stage.js';
@@ -14,9 +14,10 @@ import { t, setLang, getLang, onLangChange, applyI18n } from './i18n.js';
 const $ = id => document.getElementById(id);
 const PALETTE = ['#00E5FF', '#FF3D7F', '#FFC400', '#7CFF4F', '#B388FF', '#FF9100'];
 const SHUTTLE_MODEL = 'models/tracknetv3.onnx';
+const ASSIST_MODEL = 'models/wasb.onnx';
 const state = {
   cfg: loadConfig(), vid: null, frame: null, frameT: 0,
-  detector: null, detectorUrl: null, shuttle: null,
+  detector: null, detectorUrl: null, shuttle: null, assist: null,
   dets: [], hl: -1, busy: false, abort: null,
 };
 const stage = new Stage($('stage'), { onChange: onCourtChange });
@@ -236,11 +237,12 @@ $('import').onchange = async e => {
 };
 
 // ------------------------------------------------------------------ render options
-const TOGGLES = ['tags', 'topHud', 'playerPanel', 'courtMap', 'shuttle', 'showIds'];
+const TOGGLES = ['tags', 'topHud', 'playerPanel', 'courtMap', 'shuttle', 'shuttleMark', 'showIds'];
 function syncControls() {
   for (const k of TOGGLES) $('r-' + k).checked = !!state.cfg.render[k];
   $('model').value = state.cfg.model.file;
   $('stride').value = String(state.cfg.model.stride);
+  $('m-assist').checked = !!state.cfg.model.assist;
   $('orientation').value = state.cfg.court.orientation;
   $('score-on').checked = !!state.cfg.score.enabled;
   $('score-review').checked = !!state.cfg.score.review;
@@ -248,13 +250,17 @@ function syncControls() {
   const r = state.cfg.render;
   $('stage-mode').value = r.stage; $('theme').value = r.theme; $('frame').value = r.frame; $('ring-style').value = r.ringStyle; $('ring-color').value = r.ringColor;
   for (const k of ['A', 'B']) $('tc-' + k).value = r.teamColors[k];
+  $('badge-mode').value = r.badge.mode; $('badge-secs').value = String(r.badge.secs);
+  for (const k of RANKS) $('rank-' + k).value = r.badge.ranks[k];
   $('hl-on').checked = !!state.cfg.highlight.enabled; $('hl-count').value = String(state.cfg.highlight.count);
   syncScoreOpts();
 }
 const syncScoreOpts = () => {
   $('score-on').closest('.score-opts').classList.toggle('off', !state.cfg.score.enabled || !state.cfg.render.shuttle);
   $('hl-on').closest('.hl-opts').classList.toggle('off', !state.cfg.highlight.enabled || !state.cfg.render.shuttle);
+  $('m-assist').closest('label').classList.toggle('off', !state.cfg.render.shuttle);
   $('team-colors').hidden = state.cfg.render.ringColor !== 'team';
+  $('badge-mode').closest('.badge-opts').classList.toggle('off', !state.cfg.render.shuttle);
 };
 for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
 $('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
@@ -270,12 +276,22 @@ $('stage-mode').onchange = e => { setRender('stage', e.target.value); if (layout
 $('frame').onchange = e => setRender('frame', e.target.value);
 $('ring-style').onchange = e => setRender('ringStyle', e.target.value);
 $('ring-color').onchange = e => setRender('ringColor', e.target.value);
+// speed badge: mode 'fixed' adds a draggable 'speedBadge' panel to the layout editor
+const RANKS = ['SSS', 'SS', 'S', 'A', 'B'];
+$('badge-mode').onchange = e => { state.cfg.render.badge.mode = e.target.value; save(); layoutEd.draw(); };
+$('badge-secs').onchange = e => { state.cfg.render.badge.secs = +e.target.value; save(); };
+for (const k of RANKS) $('rank-' + k).onchange = e => {
+  const v = Math.round(+e.target.value);
+  state.cfg.render.badge.ranks[k] = v > 0 ? v : DEFAULT_CONFIG.render.badge.ranks[k];
+  e.target.value = state.cfg.render.badge.ranks[k]; save(); layoutEd.draw();
+};
 for (const k of ['A', 'B']) $('tc-' + k).oninput = e => { state.cfg.render.teamColors[k] = e.target.value.toUpperCase(); save(); layoutEd.draw(); };
 $('hl-on').onchange = e => { state.cfg.highlight.enabled = e.target.checked; save(); syncScoreOpts(); };
 $('hl-count').onchange = e => { state.cfg.highlight.count = +e.target.value; save(); };
 for (const k of ['A', 'B']) $('score-' + k.toLowerCase()).onchange = e => { state.cfg.score.start[k] = Math.max(0, Math.round(+e.target.value || 0)); e.target.value = state.cfg.score.start[k]; save(); };
 $('model').onchange = e => { state.cfg.model.file = e.target.value; save(); };
 $('stride').onchange = e => { state.cfg.model.stride = +e.target.value; save(); };
+$('m-assist').onchange = e => { state.cfg.model.assist = e.target.checked; save(); };
 $('orientation').onchange = e => { state.cfg.court.orientation = e.target.value; stage.orientation = e.target.value; stage.draw(); onCourtChange(); save(); };
 
 // ------------------------------------------------------------------ video
@@ -363,6 +379,12 @@ async function getShuttle(statusId) {
   state.shuttle = await ShuttleTracker.create(SHUTTLE_MODEL, p => setStatus(statusId, () => t('loadShuttleModel', { p: (p * 100).toFixed(0) })));
   setStatus(statusId, '');
   return state.shuttle;
+}
+async function getAssist(statusId) {
+  if (state.assist) return state.assist;
+  state.assist = await WasbTracker.create(ASSIST_MODEL, p => setStatus(statusId, () => t('loadAssistModel', { p: (p * 100).toFixed(0) })));
+  setStatus(statusId, '');
+  return state.assist;
 }
 
 // ------------------------------------------------------------------ score review (pipeline pauses here)
@@ -496,12 +518,13 @@ $('btn-render').onclick = async () => {
     await state.fontsReady;
     const detector = await getDetector('render-status');
     const shuttle = state.cfg.render.shuttle ? await getShuttle('render-status') : null;
+    const assist = shuttle && state.cfg.model.assist ? await getAssist('render-status') : null;
     const cfg = structuredClone(state.cfg);
     const seeds = {};
     cfg.players.forEach((p, i) => { if (p.seed && Math.abs((p.seedT ?? -1) - start) < 0.05) seeds[i] = p.seed; });
     const res = await renderVideo({
       vid: state.vid, cfg, court: new Court(stage.points, cfg.court.orientation, cfg.court.marginM),
-      detector, shuttle, seeds, start, end, canvas: out, fileHandle, signal: state.abort.signal,
+      detector, shuttle, assist, seeds, start, end, canvas: out, fileHandle, signal: state.abort.signal,
       review: cfg.score.enabled && cfg.score.review ? reviewScore : null,
       onProgress: p => {
         $('bar').style.width = `${Math.min(100, p.frac * 100).toFixed(1)}%`;

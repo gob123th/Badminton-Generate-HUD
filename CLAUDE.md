@@ -36,16 +36,21 @@ js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints) + zoo
 js/bytetrack.js   ByteTrack port (Kalman xyah, two-stage association, greedy matching)
 js/players.js     Track → named player: known IDs, then court distance + shirt-colour histogram; hard court-side rule; EMA smoothing
 js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
-js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre
+js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → blob centre;
+                  WasbTracker (assist): WASB 3 frames ImageNet-normalised → 3 heatmaps → heat-weighted blob + 300 px gate
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
-js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, LOCK ON (no trail),
-                  speed badge with game-style rank (SPEED_RANKS: C/B/A/S/SS, EST.), highlight banner.
+js/hud.js         All HUD drawing on canvas: floor rings, name tags, top HUD, player panel (avatars), court map, shuttle = faint circle
+                  (`shuttleMark`; no trail, no LOCK ON — it was in the way), speed badge with game-style rank (SPEED_RANKS:
+                  C/B/A/S/SS/SSS, EST.; thresholds `cfg.render.badge.ranks`, default 100/200/300/400/500 km/h) shown
+                  `badge.secs` (0.7) + 0.3 s fade; `badge.mode` 'hit' = next to the hit point (following the shuttle it was
+                  unreadable), 'fixed' = layout panel 'speedBadge' (draggable in step 4), 'off'; highlight banner.
                   Style from cfg.render: theme (THEMES), frame (angled/rounded/tech via frame()/frameFill()/corners()),
                   ringStyle (neon/solid/minimal), ringColor (player/team/theme + teamColors)
 js/layout.js      LayoutEditor (step 4): drag HUD panels to move, corner handle to resize → cfg.render.layout {x, y, scale}
 js/clip.js        ClipPlayer: plays a span of the source video on a canvas with an overlay (score review: watch a rally)
 js/pipeline.js    openVideo/grabFrame + renderVideo(): pass 0 bg median → pass 1 analyze → rally analysis → pass 2 render+encode
-models/           yolo11n-pose.onnx, yolo11s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3)
+models/           yolo11n-pose.onnx, yolo11s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3),
+                  wasb.onnx (MIT, nttcom/WASB-SBDT badminton weights, exported from PyTorch with sigmoid; 5 MB)
 fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/numbers only — never Thai text)
 ```
 
@@ -53,21 +58,25 @@ fonts/            Kanit-Regular/SemiBold (Thai), BebasNeue-Regular (Latin/number
 1. **Pass 0** (shuttle on): 32 frames sampled across the range → per-pixel median background for TrackNet.
 2. **Pass 1** – per frame: draw to canvas → YOLO (every `stride` frames) → ByteTrack → PlayerTracker → StatsTracker →
    push a **snapshot** (players' pos/head/show, dist/sta) + boxes; feed TrackNet (batches of 8). Live preview = HUD without shuttle.
+   `cfg.model.assist`: WASB runs on the same frames; its position fills only frames where TrackNetV3 found nothing.
+   `cfg.model.stride` > 1 (YOLO every 2/3/5 frames): after pass 1 `interpolateBetween` (players.js) interpolates snapshot
+   pos/head and the analysis boxes between detected frames (they were held → stepping rings, lagging racket zones).
 3. **Analysis** – `analyzeShuttle(rawPos, boxes)` over the whole range (needs the future of the trajectory).
    Scoring: `autoWinners` → optional `opts.review` (app pauses the pipeline, user fixes winners / adds missed points) → `buildScore` timeline.
 4. **Pass 2** – decode again, draw HUD from snapshot[i] + `shuttleStateAt(i)`, encode via mediabunny `CanvasSource`;
    audio packets are copied, not re-encoded. Output: StreamTarget to a file handle (File System Access) or BufferTarget blob.
-   Highlight reel (`cfg.highlight`): `pickHighlights` (rally.js) picks the top rallies (shots + top speed), padded 1 s and
-   merged; pass 2 feeds the same rendered frames inside those spans (+ their audio packets, re-timed) to a second in-memory
+   Highlight reel (`cfg.highlight`): `pickHighlights` (rally.js) picks the top rallies (shots + top speed), from 1 s before
+   the serve to `downAt` (the next serve's set-up, ≤ 25 s — clips ending 1 s after the last *detected* hit stopped before
+   the shuttle was down; player speed was too noisy to find the end of a point), merged; pass 2 feeds the same rendered frames inside those spans (+ their audio packets, re-timed) to a second in-memory
    Output, with `hud.highlight()` banner/fade drawn *after* the main CanvasSource.add (which captures synchronously).
    Rallies marked "not a point" in the review are skipped.
 
-Panel placement goes through `HudRenderer.rect(name)` (default spot or the stage's layout, scale via `scaleOf`) — draw code and
+Panel placement (topHud, playerPanel, courtMap, speedBadge) goes through `HudRenderer.rect(name)` (default spot or the stage's layout, scale via `scaleOf`) — draw code and
 the layout editor must both use it.
 
 Output stage (`cfg.render.stage`): 'overlay' (HUD on the video), 'landscape' (16:9, video inset top-left, panels around it) or
 'portrait' (9:16, width = video height). `HudRenderer.geometry()` gives the output size `OW × OH` and the video rect; in-video
-elements (rings, tags, LOCK ON, speed badge) are drawn through `inVideo()` (transform + clip), panels in output pixels,
+elements (rings, tags, shuttle circle, speed badge) are drawn through `inVideo()` (transform + clip), panels in output pixels,
 `drawBase()` draws the frame + themed background. Each stage has its own layout (`layoutKey(stage)` → `layout` /
 `layoutLandscape` / `layoutPortrait`). Pass 1's live preview always uses 'overlay' (the canvas is the video for detection);
 pass 2 resizes the canvas to `OW × OH` before creating the encoder.
@@ -104,7 +113,7 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   courts) are kept when the shuttle sits in our players' racket zones (0.6 bh) in more frames than in *other* people's
   (`others` = detections that aren't our players, from pass 1); unclaimed mid-air runs are kept if they continue a kept run
   within 0.5 s along its velocity. Verified by eye on the "หมู มาย vs มาร์ค กอล์ฟ" clip 200–240 s. Known loss: the apex of a
-  high lob after TrackNet lost the rise (> 0.5 s) is dropped (LOCK ON gap only; hits/score unaffected).
+  high lob after TrackNet lost the rise (> 0.5 s) is dropped (shuttle-circle gap only; hits/score unaffected).
   Debug: `__lastResult.debug` holds `{rawShuttle, boxes, others}` to replay rally.js variants in the page or node.
 - **Rallies come from serves** (`detectServes` / `ralliesFromServes`, rally.js) when ≥ 2 are found: before every serve the
   players stand still (mean speed < 0.35 m/s ≥ 0.7 s) with someone within 1.8 m behind a short service line, then all move.
@@ -116,6 +125,13 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   the players near the short lines, > 0.3 m off the centre line; server and receiver are both in their own right/left).
   `autoWinners` runs a score from `ctx.start`: when exactly one team's score + 1 fits the next serve's box, that team won
   (`by: 'box'`, strongest). `buildScore` flags ⚠ when the box contradicts the running score (missed / extra point).
+- **Scoring is off by default** (`score.enabled: false`, config `rev` 1 turns it off once for configs saved before): the
+  user found the guess wrong too often. Rallies / highlights don't need it.
+- **WASB assist** (`cfg.model.assist`, on): compared with TrackNetV3 by eye on "ต้า วา vs หมู ฟ้าช" 0–120 s (python,
+  same pre/post-processing as the app): inside our court they agree on ~90 % of frames; TrackNetV3-only points were mostly
+  shuttles lying on the floor, WASB-only ones included high lobs near the roof (and more legs / net / posts). WebGPU on
+  this Mac: YOLO 25.7 ms per tile (×4 at 720p), TrackNetV3 14.5 ms/frame, WASB 14.5 ms/frame. 40 s clip end-to-end:
+  stride 1 without WASB 149 s, stride 5 with WASB 71 s; hits found 6 → 16 (not verified one by one).
 - **Scoring** (rally point, teams A/B): winner = team of the next rally's server (strongest), else shuttle landing spot, else
   last hitter loses. The landing spot is used only if the shuttle was *falling* into its last point and that maps within court
   ± 2 m — a mid-air last point (lost track / static false blob) mapped to 32 m and handed the point to the team that hit it out.

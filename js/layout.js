@@ -3,7 +3,7 @@
 // {x, y (top-left, fractions of the output), scale}.
 import { HudRenderer, layoutKey } from './hud.js';
 
-const NAMES = ['topHud', 'playerPanel', 'courtMap'];
+const NAMES = ['topHud', 'playerPanel', 'courtMap', 'speedBadge'];
 const HANDLE = 0.035;            // corner handle size, fraction of the frame height
 
 export class LayoutEditor {
@@ -40,7 +40,8 @@ export class LayoutEditor {
   /** panels that are switched on, with their rectangles */
   rects() {
     const r = this.cfg.render;
-    return NAMES.filter(n => r[n] && (n !== 'courtMap' || this.court)).map(n => ({ name: n, rect: this.rect(n) }));
+    const on = n => (n === 'speedBadge' ? r.shuttle && r.badge?.mode === 'fixed' : r[n] && (n !== 'courtMap' || this.court));
+    return NAMES.filter(on).map(n => ({ name: n, rect: this.rect(n) }));
   }
 
   draw() {
@@ -58,6 +59,7 @@ export class LayoutEditor {
     if (r.topHud) this.hud.topHud(g, sh, false);
     if (r.playerPanel) this.hud.playerPanel(g, players, stats);
     if (r.courtMap && this.court) this.hud.courtMap(g, players.filter(p => p.pos));
+    if (this.rects().some(p => p.name === 'speedBadge')) this.hud.speedBadge(g, { speed: 412, age: 0.2 });   // sample: SS
     // outlines + resize handles
     const hs = HANDLE * H;
     for (const { name, rect: [x, y, w, h] } of this.rects()) {

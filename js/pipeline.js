@@ -7,7 +7,7 @@ import {
   BufferTarget, StreamTarget, CanvasSource, EncodedAudioPacketSource, canEncodeVideo,
 } from 'mediabunny';
 import { ByteTracker } from './bytetrack.js';
-import { PlayerTracker } from './players.js';
+import { PlayerTracker, interpolateBetween } from './players.js';
 import { StatsTracker } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
 import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes } from './rally.js';
@@ -55,7 +55,7 @@ class StatView {
 }
 
 /**
- * opts: {vid, cfg, court, detector, shuttle (ShuttleTracker|null), seeds, start, end, canvas, fileHandle, onProgress, signal}
+ * opts: {vid, cfg, court, detector, shuttle (ShuttleTracker|null), assist (WasbTracker|null), seeds, start, end, canvas, fileHandle, onProgress, signal}
  */
 const boxIou = (a, b) => {
   const iw = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), ih = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
@@ -64,7 +64,7 @@ const boxIou = (a, b) => {
 };
 
 export async function renderVideo(opts) {
-  const { vid, cfg, court, detector, shuttle, seeds, canvas, onProgress, signal } = opts;
+  const { vid, cfg, court, detector, shuttle, assist, seeds, canvas, onProgress, signal } = opts;
   const W = vid.width, H = vid.height, fps = vid.fps;
   const start = Math.max(0, opts.start || 0), end = Math.min(opts.end ?? vid.duration, vid.duration);
   const totalFrames = Math.max(1, Math.round((end - start) * fps));
@@ -73,7 +73,7 @@ export async function renderVideo(opts) {
   const hud = new HudRenderer(cfg, court, W, H, { stage: 'overlay' });   // pass-1 live preview: over the video
   const hudOut = new HudRenderer(cfg, court, W, H);                       // pass 2: the chosen stage (maybe inset)
   await Promise.all([hud.ready, hudOut.ready]);
-  const useShuttle = !!shuttle && cfg.render.shuttle;
+  const useShuttle = !!shuttle && cfg.render.shuttle, useAssist = useShuttle && !!assist;
   const P1 = useShuttle ? 0.72 : 0.62;                  // progress share of pass 1
   const t0 = performance.now();
   const report = (phase, frac, extra = {}) => {
@@ -91,6 +91,7 @@ export async function renderVideo(opts) {
     shuttle.setBackground(cs);
     shuttle.setRegion(court.airPolygon(), W, H);          // ignore shuttles from neighbouring courts
     shuttle.queue = [];
+    if (useAssist) { assist.setRegion(court.airPolygon(), W, H); assist.reset(); }
   }
 
   // ---------------------------------------------------------- pass 1: analyze
@@ -99,7 +100,7 @@ export async function renderVideo(opts) {
   const stats = new StatsTracker(cfg, tracker.players);
   const stride = Math.max(1, cfg.model.stride | 0);
   const rois = court.farTiles(W, H);                  // zoomed passes for small far-side players
-  const snaps = [], rawShuttle = [], boxes = [];
+  const snaps = [], rawShuttle = [], rawAssist = [], boxes = [];
   const others = [];            // per frame: boxes of people who are not our players (neighbouring courts, spectators)
   let lastOthers = [];
   let n = 0, firstTs = null, canceled = false;
@@ -132,6 +133,7 @@ export async function renderVideo(opts) {
     others.push(lastOthers);
     rawShuttle.push(null);
     if (useShuttle) for (const r of await shuttle.push(wc.canvas, n, W, H)) rawShuttle[r.frame] = r.pos;
+    if (useAssist) for (const r of await assist.push(wc.canvas, n, W, H)) rawAssist[r.frame] = r.pos;
     // live preview (players only; shuttle needs the whole trajectory first)
     hud.render(ctx, { ...snaps[n], stats: new StatView(snaps[n]), shuttle: null, preview: true });
     n++;
@@ -139,6 +141,13 @@ export async function renderVideo(opts) {
   }
   if (canceled) return null;
   if (useShuttle) for (const r of await shuttle.flush(W, H)) rawShuttle[r.frame] = r.pos;
+  // WASB only fills frames where TrackNetV3 found nothing (TrackNetV3 stays the primary)
+  let assisted = 0;
+  if (useAssist) {
+    for (const r of await assist.flush(W, H)) rawAssist[r.frame] = r.pos;
+    for (let i = 0; i < rawShuttle.length; i++) if (!rawShuttle[i] && rawAssist[i]) { rawShuttle[i] = rawAssist[i]; assisted++; }
+  }
+  interpolateBetween(snaps, boxes, stride);   // detection every `stride` frames: smooth positions in between
 
   const an = useShuttle ? analyzeShuttle(rawShuttle, boxes, { fps, width: W, others }) : null;
   // rallies from serve to serve (players' positions vs the service lines) when serves were found; else hit chains
@@ -223,7 +232,7 @@ export async function renderVideo(opts) {
       if (m >= snaps.length) break;
       const snap = snaps[m];
       hudOut.drawBase(ctx, wc.canvas);
-      hudOut.render(ctx, { ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, m, fps) : null });
+      hudOut.render(ctx, { ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, m, fps, hudOut.badgeSecs) : null });
       await pumpAudio(wc.timestamp + 0.5);
       await vSrc.add(snap.t, wc.duration || 1 / fps);
       const sp = hl?.spans.find(c => m >= c.start && m <= c.end);
@@ -255,11 +264,12 @@ export async function renderVideo(opts) {
       shuttle: an ? {
         backend: shuttle.backend,
         detected_frames: an.pos.filter(Boolean).length,
+        assist: useAssist ? { model: 'wasb', backend: assist.backend, filled_frames: assisted } : null,
         rallies: an.rallies.map((r, i) => ({
           rally: i + 1, start_s: +(snaps[r.start].t).toFixed(2), duration_s: +((r.end - r.start) / fps).toFixed(2), shots: r.hits.length,
           max_speed_kmh_est: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null,
         })),
-        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed).rank : null })),
+        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed, cfg.render.badge.ranks).rank : null })),
       } : null,
       highlight: hl ? hl.spans.map(c => ({ clip: c.index, start_s: +(start + c.t0).toFixed(2), duration_s: +(c.t1 - c.t0).toFixed(2), rallies: c.rallies.map(i => i + 1), shots: c.shots, max_speed_kmh_est: c.top })) : null,
       score: score ? {

@@ -6,7 +6,7 @@
 **ฟีเจอร์ (Phase 1–3)**
 - ตรวจจับ/ติดตามผู้เล่น (YOLO11-pose + ByteTrack + re-ID ตามฝั่งสนาม), ป้ายชื่อภาษาไทย + stamina, วงแหวนเรืองแสงใต้เท้า, Court map
 - **การ์ดผู้เล่น:** หลังอัปโหลด ระบบตัดรูปผู้เล่นในสนามมาให้ใส่ชื่อ/สี/ทีม (รูปหน้าไปโชว์ในแผงผู้เล่นด้วย)
-- **ลูกขนไก่ (TrackNetV3):** LOCK ON + หางลูก, ตรวจจับจังหวะตี, นับ RALLY COUNT, RALLY TIME, **SHOT SPEED (km/h, ค่าประมาณ)**
+- **ลูกขนไก่ (TrackNetV3):** วงกลมจาง ๆ ที่ลูก, ป้าย rank ความเร็ว C–SSS (ข้างจุดตี หรือ fix ตำแหน่งที่ลากวางเอง, ตั้งเวลา/เกณฑ์ km/h ได้) แล้วค่อย fade, ตรวจจับจังหวะตี, นับ RALLY COUNT, RALLY TIME, **SHOT SPEED (km/h, ค่าประมาณ)**
 - แผงผู้เล่นซ้ายล่าง (รูป, ชื่อ, ระยะวิ่ง MOVE, STA, แถบ stamina), ส่งออก MP4 พร้อมเสียงเดิม + stats.json (rally/ช็อต/ความเร็ว)
 
 **การประมวลผล 2 รอบ:** รอบแรกวิเคราะห์ผู้เล่น + ลูก (มีพรีวิวสด) → วิเคราะห์วิถีลูกทั้งช่วง (หาจังหวะตี/rally/ความเร็ว) → รอบสองวาด HUD + encode
@@ -51,7 +51,7 @@ index.html          UI
 css/style.css
 js/app.js           ควบคุมขั้นตอน UI
 js/pipeline.js      2-pass: analyze (players + shuttle) → rally analysis → render + encode, copy เสียงเดิม
-js/shuttle.js       TrackNetV3 (ONNX) — background median + 8 เฟรม → heatmap → ตำแหน่งลูก
+js/shuttle.js       TrackNetV3 (ONNX) — background median + 8 เฟรม → heatmap → ตำแหน่งลูก; WASB (โมเดลเสริม) เติมเฟรมที่หลุด
 js/rally.js         วิเคราะห์วิถีลูก: เติมช่วงหาย, จังหวะตี, ความเร็ว, rally
 js/detector.js      YOLO11-pose ONNX (onnxruntime-web, WebGPU → WASM)
 js/bytetrack.js     ByteTrack (Kalman + 2-stage association)
@@ -61,6 +61,6 @@ js/stats.js         ระยะวิ่ง (กรอง jitter) + stamina
 js/hud.js           วาด HUD ทั้งหมดบน canvas
 js/stage.js         หน้าจอ calibrate / ระบุตัวผู้เล่น
 js/config.js        ค่าเริ่มต้น + บันทึกใน localStorage
-models/             yolo11n/s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3)
+models/             yolo11n/s-pose.onnx (AGPL-3.0, Ultralytics), tracknetv3.onnx (MIT, qaz812345/TrackNetV3), wasb.onnx (MIT, nttcom/WASB-SBDT)
 fonts/              Kanit, Bebas Neue (OFL)
 ```

@@ -253,11 +253,11 @@ export function ralliesFromServes(an, serves, boxes, fps = 30) {
 }
 
 /**
- * Highlight reel: the `count` most exciting rallies (shots + top speed / 40), in time order, padded by `pad` s and
- * merged where they touch. count 0 = all. skip: rally indices to leave out (marked "not a point" in the review).
- * Returns [{start, end (frames), rallies: [i], shots, top (km/h | null)}].
+ * Highlight reel: the `count` most exciting rallies (shots + top speed / 40), in time order, from `pad` s before the
+ * serve until the shuttle is down (`downAt`), merged where they touch. count 0 = all. skip: rally indices to
+ * leave out (marked "not a point" in the review). Returns [{start, end (frames), rallies: [i], shots, top (km/h | null)}].
  */
-export function pickHighlights(an, { count = 5, fps = 30, pad = 1, skip = new Set() } = {}) {
+export function pickHighlights(an, { count = 5, fps = 30, pad = 1, tail = 2, skip = new Set() } = {}) {
   const N = an.pos.length, p = Math.round(pad * fps);
   const picked = an.rallies
     .map((r, i) => ({ i, r, top: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null }))
@@ -267,7 +267,7 @@ export function pickHighlights(an, { count = 5, fps = 30, pad = 1, skip = new Se
     .sort((a, b) => a.i - b.i);
   const clips = [];
   for (const c of picked) {
-    const start = Math.max(0, c.r.start - p), end = Math.min(N - 1, c.r.end + p), last = clips.at(-1);
+    const start = Math.max(0, c.r.start - p), end = downAt(an, c.i, fps, tail), last = clips.at(-1);
     if (last && start <= last.end) {
       last.end = Math.max(last.end, end); last.rallies.push(c.i); last.shots += c.r.hits.length;
       last.top = Math.max(last.top || 0, c.top || 0) || null;
@@ -276,8 +276,29 @@ export function pickHighlights(an, { count = 5, fps = 30, pad = 1, skip = new Se
   return clips;
 }
 
-/** HUD state for frame i. */
-export function shuttleStateAt(an, i, fps) {
+/**
+ * Last frame worth showing of rally i. Clips that stopped ~1 s after the last *detected* hit ended before the shuttle was
+ * down (TrackNet misses many hits, and player speed is too noisy to tell when a point is dead). Players only line up for
+ * the next serve after the point, so a serve-based rally runs to the next serve's set-up (`limit`), at most `max` s.
+ * Without it: follow the tracked shuttle after the last hit (gaps <= 0.7 s) to where it is lost, + `tail` s, >= 3 s
+ * after the last hit, before the next rally.
+ */
+export function downAt(an, i, fps = 30, tail = 2, max = 25) {
+  const N = an.pos.length, r = an.rallies[i];
+  if (r.limit != null) return Math.max(r.end, Math.min(r.limit, r.start + max * fps, N - 1));
+  const bound = Math.min(N - 1, an.rallies[i + 1] ? an.rallies[i + 1].start - 1 : N - 1);
+  const from = r.hits.at(-1)?.frame ?? r.start, gap = Math.round(0.7 * fps);
+  let down = from;
+  for (let k = from + 1; k <= bound && k - down <= gap; k++) if (an.pos[k]) down = k;
+  return Math.max(r.start + 1, Math.min(bound, Math.max(r.end, down + Math.round(tail * fps), from + 3 * fps)));
+}
+
+const posNear = (pos, f, w = 5) => {
+  for (let d = 0; d <= w; d++) { const p = pos[f - d] ?? pos[f + d]; if (p) return p; }
+  return null;
+};
+/** HUD state for frame i; badgeSecs = how long the shot-speed badge stays up after a hit (HudRenderer.badgeSecs). */
+export function shuttleStateAt(an, i, fps, badgeSecs = 1) {
   const s = { pos: an.pos[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
   if (an.score) for (const e of an.score) { if (e.frame <= i) s.score = e; else break; }
   let rally = null;
@@ -291,7 +312,8 @@ export function shuttleStateAt(an, i, fps) {
     if (h.frame > i) break;
     if (h.speed != null) {
       s.lastSpeed = h.speed;
-      s.speedLabel = i - h.frame < 1.2 * fps ? { speed: h.speed, age: (i - h.frame) / fps } : null;
+      // pinned where the shot was hit (a badge following the shuttle was gone before it could be read)
+      s.speedLabel = i - h.frame < badgeSecs * fps ? { speed: h.speed, age: (i - h.frame) / fps, at: posNear(an.pos, h.frame) } : null;
     }
   }
   return s;

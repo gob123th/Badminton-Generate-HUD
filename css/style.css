@@ -191,9 +191,15 @@ button.danger:hover:not(:disabled) { border-color: var(--pink); color: var(--pin
 .style-opts { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
 .style-opts .row > label { flex: 1; min-width: 120px; }
 .team-colors { display: flex; gap: 10px; }
+.badge-opts { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+.badge-opts .row > label { flex: 1; min-width: 120px; }
+.badge-opts .row.ranks > label { min-width: 52px; }
+.badge-opts .row.ranks input { width: 100%; }
+.badge-opts.off { opacity: 0.45; pointer-events: none; }
 .team-colors[hidden] { display: none; }
 .team-colors label.inline { margin: 0 0 6px; }
 .team-colors input[type=color] { width: 30px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
 .hl-opts { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
 .hl-opts .row label { flex: 1; }
 .hl-opts.off .row { opacity: 0.45; pointer-events: none; }
+label.off { opacity: 0.45; pointer-events: none; }   /* option that needs another one switched on */

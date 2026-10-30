@@ -23,15 +23,20 @@ export const layoutKey = stage => ({ landscape: 'layoutLandscape', portrait: 'la
 const TOP_W1 = 4 * 290 + 3 * 16;        // top HUD width at scale 1 with the SCORE panel
 const even = v => Math.round(v / 2) * 2;
 
-// shot-speed tiers (all EST.): game-style rank shown at the shuttle right after a hit
+// shot-speed tiers (all EST.): game-style rank shown after a hit; thresholds (km/h) come from cfg.render.badge.ranks
+// (step 4), C is everything below B
 export const SPEED_RANKS = [
-  { min: 200, rank: 'SS', name: 'MONSTER SMASH', color: '#FF3D7F' },
-  { min: 150, rank: 'S', name: 'SMASH', color: '#FF9100' },
-  { min: 100, rank: 'A', name: 'POWER SHOT', color: '#FFC400' },
-  { min: 60, rank: 'B', name: 'DRIVE', color: '#7CFF4F' },
-  { min: 0, rank: 'C', name: 'TOUCH', color: '#9FB4D0' },
+  { rank: 'SSS', name: 'GODLIKE SMASH', color: '#D96BFF' },
+  { rank: 'SS', name: 'MONSTER SMASH', color: '#FF3D7F' },
+  { rank: 'S', name: 'SMASH', color: '#FF9100' },
+  { rank: 'A', name: 'POWER SHOT', color: '#FFC400' },
+  { rank: 'B', name: 'DRIVE', color: '#7CFF4F' },
+  { rank: 'C', name: 'TOUCH', color: '#9FB4D0' },
 ];
-export const speedRank = kmh => SPEED_RANKS.find(r => kmh >= r.min);
+export const RANK_MIN = { SSS: 500, SS: 400, S: 300, A: 200, B: 100 };
+export const speedRank = (kmh, min = RANK_MIN) => SPEED_RANKS.find(r => r.rank === 'C' || kmh >= (min[r.rank] ?? RANK_MIN[r.rank]));
+const BADGE_FADE = 0.3;                       // fade-out after cfg.render.badge.secs
+const BADGE_W = 300, BADGE_H = 72;            // badge size at scale 1 (fits 3 digits + the longest rank name)
 
 const rgba = (hex, a) => {
   const h = hex.replace('#', '');
@@ -131,12 +136,13 @@ export class HudRenderer {
     this.inVideo(ctx, g => {
       if (r.showIds && st.dets) this.debugIds(g, st.dets);
       for (const p of shown) this.ring(g, p, st.t);
-      if (st.shuttle && r.shuttle) this.shuttle(g, st.shuttle, st.t);
+      if (st.shuttle && r.shuttle) this.shuttle(g, st.shuttle, r.badge?.mode === 'hit');
       if (r.tags !== false) for (const p of [...shown].sort((a, b) => a.head[1] - b.head[1])) this.tag(g, p, st.stats);
     });
     if (r.topHud) this.topHud(ctx, st.shuttle, st.preview);
     if (r.playerPanel) this.playerPanel(ctx, st.players, st.stats);
     if (r.courtMap) this.courtMap(ctx, shown);
+    if (st.shuttle?.speedLabel && r.shuttle && r.badge?.mode === 'fixed') this.speedBadge(ctx, st.shuttle.speedLabel);
   }
 
   /** colour theme (read per draw so the step-4 preview follows the select) */
@@ -179,6 +185,9 @@ export class HudRenderer {
   // ---------------------------------------------------------------- panel layout (user-placed in step 4)
   /** this stage's saved panel layout {topHud, playerPanel, courtMap} (may be undefined) */
   get layout() { return this.cfg.render[layoutKey(this.stage)]; }
+  rankOf(kmh) { return speedRank(kmh, this.cfg.render.badge?.ranks); }
+  /** seconds a speed badge stays up after the hit, fade included (pipeline passes it to shuttleStateAt) */
+  get badgeSecs() { return (this.cfg.render.badge?.secs ?? 0.7) + BADGE_FADE; }
   /** size multiplier of a panel: layout[name].scale, else the stage default */
   scaleOf(name) { return Math.min(Math.max(this.layout?.[name]?.scale ?? this.defScale[name] ?? 1, 0.4), 2.5); }
   mapInner(s) {
@@ -194,9 +203,11 @@ export class HudRenderer {
     let w, h;
     if (name === 'topHud') { w = nTop * 290 * s + (nTop - 1) * 16 * s; h = 96 * s; }
     else if (name === 'playerPanel') { w = 480 * s; h = 34 * s + 64 * s * nPlayers; }
+    else if (name === 'speedBadge') { w = BADGE_W * s; h = BADGE_H * s; }
     else { const [mw, mh] = this.mapInner(s); w = mw + 44 * s; h = mh + 82 * s; }
     let x, y;
-    if (this.stage === 'landscape') {
+    if (name === 'speedBadge') { x = vx + vw - m - w; y = vy + vh * 0.3; }   // fixed-mode default: right side of the video
+    else if (this.stage === 'landscape') {
       if (name === 'topHud') { x = vx + (vw - w) / 2; y = vy + vh + m; }
       else if (name === 'playerPanel') { x = W - m - w; y = m; }
       else {                                  // centred under the player panel
@@ -308,7 +319,7 @@ export class HudRenderer {
     const panels = [
       { label: 'RALLY TIME', value: sh?.rallyTime != null ? fmtTime(sh.rallyTime) : '--:--.--', unit: '', live: sh?.live },
       { label: 'RALLY COUNT', value: sh?.rallyCount != null ? String(sh.rallyCount) : '--', unit: 'SHOT' },
-      { label: 'SHOT SPEED', value: sh?.lastSpeed != null ? String(sh.lastSpeed) : '--', unit: sh?.lastSpeed != null ? `KM/H ${speedRank(sh.lastSpeed).rank}` : 'KM/H', note: 'EST.' },
+      { label: 'SHOT SPEED', value: sh?.lastSpeed != null ? String(sh.lastSpeed) : '--', unit: sh?.lastSpeed != null ? `KM/H ${this.rankOf(sh.lastSpeed).rank}` : 'KM/H', note: 'EST.' },
     ];
     if (sh?.score) panels.unshift({ label: 'SCORE A - B', value: `${sh.score.A} - ${sh.score.B}`, unit: '' });
     if (preview) panels[0].value = 'ANALYZING';
@@ -460,34 +471,20 @@ export class HudRenderer {
     ctx.restore();
   }
 
-  // ---------------------------------------------------------------- shuttle: LOCK ON + speed badge (no trail: gaps and
-  // interpolated jumps drew long straight lines that looked nothing like the flight)
-  shuttle(ctx, sh, t) {
+  // ---------------------------------------------------------------- shuttle: faint circle + speed badge (no trail: gaps
+  // and interpolated jumps drew long straight lines that looked nothing like the flight; the LOCK ON brackets + label
+  // were in the way)
+  shuttle(ctx, sh, badge) {
     const s = this.s;
-    ctx.save();
-    if (sh.pos) {
-      const [x, y] = sh.pos, r = 22 * s, L = 9 * s, rot = t * 2.2;
-      ctx.shadowColor = this.th.accent; ctx.shadowBlur = 10 * s * this.th.glow;
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.5 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = this.th.accent; ctx.lineWidth = Math.max(2.2 * s, 1.5);
-      ctx.beginPath(); ctx.arc(x, y, r * 0.62, 0, Math.PI * 2); ctx.stroke();
-      ctx.translate(x, y); ctx.rotate(Math.sin(rot) * 0.25);
-      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {         // corner brackets
-        ctx.beginPath();
-        ctx.moveTo(sx * r, sy * (r - L)); ctx.lineTo(sx * r, sy * r); ctx.lineTo(sx * (r - L), sy * r);
-        ctx.stroke();
-      }
-      ctx.rotate(-Math.sin(rot) * 0.25);
-      ctx.shadowBlur = 0;
-      ctx.font = font(16 * s, FONT_DISPLAY); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.letterSpacing = `${1.5 * s}px`;
-      const label = 'LOCK ON', lw = ctx.measureText(label).width + 10 * s;
-      ctx.fillStyle = `rgba(${this.th.panel},0.8)`; ctx.fillRect(r + 4 * s, -r - 2 * s, lw, 18 * s);
-      ctx.fillStyle = this.th.accent; ctx.fillText(label, r + 9 * s, -r + 12 * s);
-      ctx.letterSpacing = '0px';
+    if (sh.pos && this.cfg.render.shuttleMark !== false) {
+      const [x, y] = sh.pos;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.strokeStyle = rgba(this.th.accent, 0.45);
+      ctx.lineWidth = Math.max(1.5 * s, 1);
+      ctx.beginPath(); ctx.arc(x, y, 13 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
-    if (sh.pos && sh.speedLabel) this.speedBadge(ctx, sh.pos[0], sh.pos[1], sh.speedLabel);
+    if (badge && sh.speedLabel?.at) this.speedBadge(ctx, sh.speedLabel, sh.speedLabel.at);
   }
 
   // ---------------------------------------------------------------- highlight reel: clip banner + fade between clips
@@ -498,7 +495,7 @@ export class HudRenderer {
     if (age < 2.4) {
       const a = Math.min(1, age / 0.25, (2.4 - age) / 0.4), slide = (1 - Math.min(1, age / 0.25)) * 60 * s;
       const title = `HIGHLIGHT ${clip.index}/${clip.total}`;
-      const sub = `${clip.shots} SHOTS` + (clip.top != null ? `  ·  TOP ${clip.top} KM/H ${speedRank(clip.top).rank} (EST.)` : '');
+      const sub = `${clip.shots} SHOTS` + (clip.top != null ? `  ·  TOP ${clip.top} KM/H ${this.rankOf(clip.top).rank} (EST.)` : '');
       ctx.globalAlpha = a;
       ctx.font = font(46 * s, FONT_DISPLAY); ctx.letterSpacing = `${3 * s}px`; const tw = ctx.measureText(title).width;
       ctx.font = font(22 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`; const sw = ctx.measureText(sub).width;
@@ -522,37 +519,40 @@ export class HudRenderer {
     ctx.restore();
   }
 
-  // ---------------------------------------------------------------- speed badge: rank + km/h, pops in after a hit
-  speedBadge(ctx, x, y, { speed, age }) {
-    const s = this.s, rk = speedRank(speed);
-    const a = Math.max(0, 1 - Math.max(0, age - 0.9) / 0.35);
+  // ---------------------------------------------------------------- speed badge: rank + km/h, pops in after a hit,
+  // stays for cfg.render.badge.secs and fades. at = hit point (video px, mode 'hit': next to it, with a leader line);
+  // no at = mode 'fixed': the 'speedBadge' panel spot (output px, placed in the step-4 layout editor)
+  speedBadge(ctx, { speed, age }, at = null) {
+    const rk = this.rankOf(speed), secs = this.cfg.render.badge?.secs ?? 0.7;
+    const a = Math.max(0, 1 - Math.max(0, age - secs) / BADGE_FADE);
     if (a <= 0) return;
     const pop = age < 0.15 ? 1 + (1 - age / 0.15) * 0.45 : 1;
+    const s = at ? this.s : this.s * this.scaleOf('speedBadge'), w = BADGE_W * s, h = BADGE_H * s;
+    let bx, by;
     ctx.save();
     ctx.globalAlpha = a;
-    // impact burst for the top tiers
-    if (rk.min >= 150 && age < 0.35) {
-      const u = age / 0.35, n = rk.rank === 'SS' ? 16 : 10;
-      ctx.strokeStyle = rk.color; ctx.lineWidth = 3 * s * (1 - u); ctx.shadowColor = rk.color; ctx.shadowBlur = 14 * s;
-      for (let k = 0; k < n; k++) {
-        const th = (k / n) * Math.PI * 2 + 0.3, r0 = (26 + 40 * u) * s, r1 = (40 + 80 * u) * s;
-        ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * r0, y + Math.sin(th) * r0); ctx.lineTo(x + Math.cos(th) * r1, y + Math.sin(th) * r1); ctx.stroke();
+    if (at) {
+      const [x, y] = at;
+      bx = x + 34 * s; by = y - h - 30 * s;                         // up-right of the hit, flipped to stay in frame
+      if (bx + w > this.W - 12 * s) bx = x - 34 * s - w;
+      if (by < 12 * s) by = y + 30 * s;
+      if (by + h > this.H - 12 * s) by = this.H - 12 * s - h;
+      // impact burst for the top tiers
+      if (['S', 'SS', 'SSS'].includes(rk.rank) && age < 0.35) {
+        const u = age / 0.35, n = rk.rank === 'S' ? 10 : 16;
+        ctx.strokeStyle = rk.color; ctx.lineWidth = 3 * s * (1 - u); ctx.shadowColor = rk.color; ctx.shadowBlur = 14 * s;
+        for (let k = 0; k < n; k++) {
+          const th = (k / n) * Math.PI * 2 + 0.3, r0 = (26 + 40 * u) * s, r1 = (40 + 80 * u) * s;
+          ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * r0, y + Math.sin(th) * r0); ctx.lineTo(x + Math.cos(th) * r1, y + Math.sin(th) * r1); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
       }
-      ctx.shadowBlur = 0;
-    }
-    const num = String(speed), skew = 12 * s, rb = 64 * s, h = 72 * s, pad = 14 * s;
+      // leader line from the hit to the badge
+      ctx.strokeStyle = rk.color; ctx.lineWidth = 1.5 * s;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx + (bx > x ? 0 : w), by + h / 2); ctx.stroke();
+    } else [bx, by] = this.rect('speedBadge');
+    const num = String(speed), skew = 12 * s, rb = 64 * s, pad = 14 * s;
     ctx.font = font(52 * s, FONT_DISPLAY); const tw = ctx.measureText(num).width;
-    ctx.font = font(17 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`;
-    const uw = ctx.measureText('KM/H EST').width, nw = ctx.measureText(rk.name).width;
-    ctx.letterSpacing = '0px';
-    const w = rb + pad + Math.max(tw + 8 * s + uw, nw) + pad + skew;
-    let bx = x + 34 * s, by = y - h - 30 * s;                      // up-right of the shuttle, flipped to stay in frame
-    if (bx + w > this.W - 12 * s) bx = x - 34 * s - w;
-    if (by < 12 * s) by = y + 30 * s;
-    if (by + h > this.H - 12 * s) by = this.H - 12 * s - h;
-    // leader line from the shuttle to the badge
-    ctx.strokeStyle = rk.color; ctx.lineWidth = 1.5 * s;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx + (bx > x ? 0 : w), by + h / 2); ctx.stroke();
     ctx.translate(bx + w / 2, by + h / 2); ctx.scale(pop, pop); ctx.translate(-w / 2, -h / 2);
     this.frame(ctx, 0, 0, w, h, { skew }); ctx.fillStyle = `rgba(${this.th.panel},0.88)`; ctx.fill();
     ctx.strokeStyle = rgba(rk.color, 0.7); ctx.lineWidth = 1.5 * s; ctx.stroke();
@@ -562,7 +562,7 @@ export class HudRenderer {
     ctx.shadowBlur = 0;
     this.corners(ctx, 0, 0, w, h, rk.color);
     ctx.fillStyle = `rgb(${DARK})`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.font = font((rk.rank.length > 1 ? 44 : 54) * s, FONT_DISPLAY); ctx.fillText(rk.rank, rb / 2 + 2 * s, h / 2 + 19 * s);
+    ctx.font = font([54, 44, 34][rk.rank.length - 1] * s, FONT_DISPLAY); ctx.fillText(rk.rank, rb / 2 + 2 * s, h / 2 + [19, 16, 12][rk.rank.length - 1] * s);
     ctx.textAlign = 'left';
     const tx = rb + pad;
     ctx.font = font(52 * s, FONT_DISPLAY); ctx.fillStyle = this.th.text; ctx.fillText(num, tx, 46 * s);

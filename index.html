@@ -102,6 +102,7 @@
               <option value="1" data-i18n="stride.1"></option>
               <option value="2" data-i18n="stride.2"></option>
               <option value="3" data-i18n="stride.3"></option>
+              <option value="5" data-i18n="stride.5"></option>
             </select>
           </label>
         </div>
@@ -111,6 +112,7 @@
           <label><input type="checkbox" id="r-playerPanel"> <span data-i18n="opt.playerPanel"></span></label>
           <label><input type="checkbox" id="r-courtMap"> <span data-i18n="opt.courtMap"></span></label>
           <label><input type="checkbox" id="r-shuttle"> <span data-i18n="opt.shuttle"></span></label>
+          <label data-i18n-title="opt.assist.tip"><input type="checkbox" id="m-assist"> <span data-i18n="opt.assist"></span></label>
           <label><input type="checkbox" id="r-showIds"> <span data-i18n="opt.showIds"></span></label>
         </div>
         <div class="style-opts">
@@ -162,6 +164,32 @@
               <label class="inline">A <input type="color" id="tc-A"></label>
               <label class="inline">B <input type="color" id="tc-B"></label>
             </span>
+          </div>
+        </div>
+        <div class="badge-opts">
+          <label class="inline"><input type="checkbox" id="r-shuttleMark"> <span data-i18n="opt.shuttleMark"></span></label>
+          <div class="row">
+            <label><span data-i18n="badge.mode"></span>
+              <select id="badge-mode">
+                <option value="hit" data-i18n="badge.hit"></option>
+                <option value="fixed" data-i18n="badge.fixed"></option>
+                <option value="off" data-i18n="badge.off"></option>
+              </select>
+            </label>
+            <label><span data-i18n="badge.secs"></span>
+              <select id="badge-secs">
+                <option value="0.5">0.5</option><option value="0.7">0.7</option><option value="1">1</option>
+                <option value="1.5">1.5</option><option value="2">2</option><option value="3">3</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint" data-i18n="badge.ranks"></p>
+          <div class="row ranks">
+            <label>SSS <input type="number" id="rank-SSS" min="1" max="999" step="10"></label>
+            <label>SS <input type="number" id="rank-SS" min="1" max="999" step="10"></label>
+            <label>S <input type="number" id="rank-S" min="1" max="999" step="10"></label>
+            <label>A <input type="number" id="rank-A" min="1" max="999" step="10"></label>
+            <label>B <input type="number" id="rank-B" min="1" max="999" step="10"></label>
           </div>
         </div>
         <p class="hint" data-i18n="layout.hint"></p>

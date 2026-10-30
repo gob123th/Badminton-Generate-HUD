@@ -2,17 +2,22 @@
 export const DEFAULT_CONFIG = {
   players: [],     // never preset: cards come from detection on the user's own clip
   court: { orientation: 'behind', marginM: 1.2 },
-  model: { file: 'models/yolo11s-pose.onnx', conf: 0.3, iou: 0.5, stride: 1 },
+  rev: 1,          // saved configs below this get the migration in loadConfig()
+  model: { file: 'models/yolo11s-pose.onnx', conf: 0.3, iou: 0.5, stride: 1, assist: true },   // assist: WASB fills TrackNetV3 gaps
   tracking: { maxSpeed: 7, maxJump: 1.5, lostTtl: 1.0 },
   stamina: { start: 100, drainPerMeter: 0.25, min: 5 },
   stats: { deadbandM: 0.15 },
   smoothing: { posAlpha: 0.45, tagAlpha: 0.25 },
-  score: { enabled: true, review: true, start: { A: 0, B: 0 } },   // needs shuttle tracking
+  score: { enabled: false, review: true, start: { A: 0, B: 0 } },  // needs shuttle tracking; off: the guess was too often wrong
   highlight: { enabled: true, count: 5 },                          // extra reel of the best rallies; count 0 = all
   render: {
     ringRadiusM: 0.55, tags: true, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false,
     theme: 'broadcast', frame: 'angled',  // hud.js THEMES / FRAMES
     ringStyle: 'neon', ringColor: 'player', teamColors: { A: '#FF5A36', B: '#2E9BFF' },   // floor ring: neon|solid|minimal, player|team|theme
+    shuttleMark: true,    // faint circle on the shuttle
+    // shot-speed badge: mode 'hit' (next to the hit point) | 'fixed' (layout spot 'speedBadge') | 'off';
+    // secs shown before a 0.3 s fade; ranks = minimum km/h per rank (hud.js SPEED_RANKS, C below B)
+    badge: { mode: 'hit', secs: 0.7, ranks: { SSS: 500, SS: 400, S: 300, A: 200, B: 100 } },
     // panel placement from the step-4 editor: {x, y (top-left, fractions of the frame), scale}; null = default spot
     layout: { topHud: null, playerPanel: null, courtMap: null },
     // output: 'overlay' = HUD on the video; 'landscape' 16:9 / 'portrait' 9:16 = video inset, panels around it (own layouts)
@@ -49,8 +54,11 @@ function migrate() {
 
 export function loadConfig() {
   migrate();
-  try { return merge(clone(DEFAULT_CONFIG), JSON.parse(localStorage.getItem(KEY) || '{}')); }
-  catch { return clone(DEFAULT_CONFIG); }
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if ((saved.rev ?? 0) < 1 && saved.score) saved.score.enabled = false;   // rev 1: scoring became opt-in
+    return merge(clone(DEFAULT_CONFIG), { ...saved, rev: DEFAULT_CONFIG.rev });
+  } catch { return clone(DEFAULT_CONFIG); }
 }
 export function saveConfig(cfg) {
   try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch { /* storage unavailable */ }
