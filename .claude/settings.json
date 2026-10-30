@@ -5,7 +5,8 @@
       "ClaudeInChromeDomain(127.0.0.1:8080)",
       "mcp__claude-in-chrome__tabs_create_mcp",
       "ClaudeInChromeDomain(gob123th.github.io)",
-      "ClaudeInChromeDomain(localhost:8080)"
+      "ClaudeInChromeDomain(localhost:8080)",
+      "ClaudeInChromeDomain(127.0.0.1:8090)"
     ]
   }
 }

@@ -7,7 +7,7 @@ import {
   BufferTarget, StreamTarget, CanvasSource, EncodedAudioPacketSource, canEncodeVideo,
 } from 'mediabunny';
 import { ByteTracker } from './bytetrack.js';
-import { PlayerTracker, interpolateBetween } from './players.js';
+import { PlayerTracker, interpolateBetween, footPoint } from './players.js';
 import { StatsTracker } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
 import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes } from './rally.js';
@@ -115,7 +115,10 @@ export async function renderVideo(opts) {
       const dets = await detector.detect(canvas, W, H, cfg.model.iou, rois);
       tracker.update(bt.update(dets), t, ctx);
       const mine = tracker.players.filter(p => p.visible && p.box).map(p => p.box);
-      lastOthers = dets.filter(d => d.score >= cfg.model.conf && !mine.some(b => boxIou(b, d.box) > 0.5)).map(d => d.box);
+      // someone else = a person standing off our court: one of our players the tracker lost for a moment (found by
+      // YOLO, not assigned) made our own serve "theirs"
+      lastOthers = dets.filter(d => d.score >= cfg.model.conf && !mine.some(b => boxIou(b, d.box) > 0.5)
+        && !court.inPlay(court.toCourt(...footPoint(d)))).map(d => d.box);
       stats.update(tracker.players, t);
     }
     const ps = tracker.players;

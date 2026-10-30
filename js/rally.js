@@ -64,10 +64,11 @@ export function playVolume(boxes, toImg, { fps = 30, grow = 1.5, height = 8 } = 
  * post-process keeps only the largest blob, which is a neighbouring court's shuttle (or a static white spot) whenever
  * that one looks bigger. Blobs are linked frame to frame into tracklets (gap ≤ 3 frames, near where the tracklet's
  * velocity predicts, never > 120 px/frame); every frame takes the blob whose tracklet looks most like ours:
- *   evidence = 3 × (frames in our players' racket zones − frames in other people's)
- *            + moving frames inside the play volume − moving frames outside it (a still blob earns nothing)
- * ties → more moving frames, then the stronger blob. A tracklet with negative evidence is someone else's: the frame
- * stays empty rather than take it. Without players (no zones, no volume) this is the longest moving tracklet.
+ *   evidence = 10 × (racket contact at its start + at its end: +1 ours, −1 someone else's, 0 none)
+ *            + 10 × share of moving frames inside the play volume (−1…1; a still blob earns nothing)
+ * summed over the best chain of tracklets through it (see below); ties → more moving frames, then the stronger blob.
+ * Negative → someone else's: the frame stays empty rather than take it. Without players (no zones, no volume) this
+ * is the longest moving tracklet.
  */
 export function pickShuttle(cands, boxes, { fps = 30, width = 1280, others = [], vol = null } = {}) {
   const N = cands.length, k = width / 1280, f = fps / 30, maxGap = Math.max(1, Math.round(3 * f));
@@ -102,22 +103,45 @@ export function pickShuttle(cands, boxes, { fps = 30, width = 1280, others = [],
     });
     active = active.filter(t => i - t.pts.at(-1)[0] < maxGap);
   }
-  const still = 4 * k;
+  // Racket contact counts only at a tracklet's ends (a hit starts or ends a flight): mid-flight, a near player's zone
+  // covers half the image (box ~350 px tall at 720p) and the next court's shuttle flying behind him sat in it for 100
+  // frames. The play volume counts as the share of moving frames inside (−1…1): a long flight can't outvote contacts
+  const still = 4 * k, END = 3;
+  const contact = pts => Math.sign(pts.reduce((s, [i, x, y]) => s + zoneVote(x, y, boxes[i], others[i]), 0));
   for (const t of tracks) {
-    let zone = 0, inside = 0, moving = 0;
+    let inside = 0, moving = 0;
     t.pts.forEach(([i, x, y], j) => {
-      zone += zoneVote(x, y, boxes[i], others[i]);
       if (!j || hyp(x - t.pts[j - 1][1], y - t.pts[j - 1][2]) < still) return;
       moving++;
       const h = vol?.(i);
       if (h) inside += inHull(h, x, y) ? 1 : -1;
     });
-    t.ev = 3 * zone + inside; t.moving = moving;
+    const n = t.pts.length, ends = contact(t.pts.slice(0, END)) + (n > END ? contact(t.pts.slice(-END)) : 0);
+    t.ev = 10 * ends + (moving >= 3 ? Math.min(0, (10 * inside) / moving) : 0);
+    t.moving = moving;
   }
-  const better = (a, b) => (a[0].ev - b[0].ev) || (a[0].moving - b[0].moving) || (a[1][2] - b[1][2]);
+  // a hit breaks a tracklet (the velocity flips) but not the shuttle's place: tracklet b follows a when it starts
+  // ≤ maxGap frames after a ends, no further than a shuttle moves in that time. A tracklet is scored by the best chain
+  // through it, and one with a predecessor must take one: a lob our player just hit stays ours although it rises out
+  // of the volume, and the next court's shuttle hit across our air (an oblique camera can't tell depth) stays theirs
+  const ends = new Map();
+  for (const t of tracks) { const e = t.pts.at(-1)[0]; (ends.get(e) ?? ends.set(e, []).get(e)).push(t); }
+  for (const t of tracks) {
+    const [s, x, y] = t.pts[0];
+    t.prev = []; t.next ??= [];
+    for (let g = 1; g <= maxGap; g++) for (const a of ends.get(s - g) || []) {
+      const [, ax, ay] = a.pts.at(-1);
+      if (hyp(x - ax, y - ay) <= 120 * k * g / f) { t.prev.push(a); (a.next ??= []).push(t); }
+    }
+  }
+  const best = list => (list.length ? Math.max(...list) : 0);
+  for (const t of tracks) t.fwd = t.ev + best(t.prev.map(a => a.fwd));            // tracks are in start order
+  for (let n = tracks.length - 1; n >= 0; n--) tracks[n].bwd = tracks[n].ev + best(tracks[n].next.map(b => b.bwd));
+  for (const t of tracks) t.chain = t.fwd + t.bwd - t.ev;
+  const better = (a, b) => (a[0].chain - b[0].chain) || (a[0].moving - b[0].moving) || (a[1][2] - b[1][2]);
   return at.map(list => {
     const best = list.reduce((a, b) => (!a || better(b, a) > 0 ? b : a), null);
-    return best && best[0].ev >= 0 ? [best[1][0], best[1][1]] : null;
+    return best && best[0].chain > 0 ? [best[1][0], best[1][1]] : null;
   });
 }
 

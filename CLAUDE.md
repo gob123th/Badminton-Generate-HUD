@@ -112,12 +112,18 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **Neighbouring courts' shuttles:** TrackNet blobs are masked to `Court.airPolygon()` (floor + 8 m) — with an oblique camera that
   barely helps. **`pickShuttle`** (rally.js) chooses among every blob of a frame (`cands`; TrackNet's own post-process keeps the
   largest, which was often the next court's shuttle or a white spot while ours flew high): blobs are linked into tracklets,
-  evidence = 3 × (frames in our racket zones − in other people's) + moving frames inside − outside the **play volume**
-  (`playVolume`: our players' floor positions over −0.5…+1 s, + 1.5 m, up to 8 m; needs players on both sides), and a
-  tracklet with negative evidence leaves the frame empty. On "ต้า วา vs หมู ฟ้าช" 20–80 s (courts on both sides; 536 of
-  1800 frames had > 1 blob) kept shuttle frames 841 → 932, points outside the play volume 15 → 0; checked by eye on
-  one frame per changed run (new: high lobs over our court, old: next court's shuttle / player). "หมู มาย…" 200–260 s
-  (no neighbour in view): 31 frames had > 1 blob, 9 changed. Hits/speeds changed slightly — not checked one by one.
+  evidence = 10 × racket contact at the tracklet's **ends only** (+1 ours / −1 someone else's) + 10 × min(0, share of moving
+  frames inside the **play volume**); a tracklet is scored by the best chain of tracklets through it (a tracklet starting
+  ≤ 3 frames after another ended, within shuttle speed, must take one: hits break tracklets, not the shuttle's place), and
+  only a chain > 0 is kept. Learned on "ต้า วา vs หมู ฟ้าช" 0–15 s, where the first version circled the left court's
+  shuttle for 4 s (user screenshot at 6 s): a near player's box is ~350 px tall, so his racket zone covered the left court's
+  air behind him for 100 frames (mid-flight zone votes are meaningless), and `playVolume` (our players' floor positions
+  over −0.5…+1 s, + 1.5 m, up to 8 m) includes the neighbours' air in the image on both sides (an oblique camera can't
+  tell depth) — it can only say "not ours". **`others` = people off our court** (pipeline: foot outside `Court.inPlay`):
+  one of our players the tracker lost for a moment made our own serve "theirs".
+  Checked by eye (contact sheets, old vs new): 0–15 s 128 frames moved onto our lob / rally; "ต้า วา" 20–80 s kept
+  841 (TrackNet largest blob) → 976; "หมู มาย…" 200–260 s 652 → 656. Still wrong: ~15 frames at 52 s and 7 at 66 s
+  (a white spot at the left court's net / a shuttle at the right court's post next to our near players).
   Then `analyzeShuttle` 2b: runs (split at gaps and at > 200 px/frame jumps = TrackNet switching
   courts) are kept when the shuttle sits in our players' racket zones (0.6 bh) in more frames than in *other* people's
   (`others` = detections that aren't our players, from pass 1); unclaimed mid-air runs are kept if they continue a kept run
