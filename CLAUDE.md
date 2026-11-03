@@ -177,6 +177,9 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   (no player, no speed). `an.view` still splits at every turn. Checked by eye on "หมู มาย…" 212–215 s: 5 of 5. Wrist speed
   from the pose keypoints was tried as the shot signal and rejected: at stride 5 almost no signal; at stride 1 on the same
   rally it missed near-side shots and fired on partners standing together. A rally with no turn at all for seconds is still uncounted.
+- **The server's toss is not a shot** (user clip, count 2 before the serve): a flight first seen falling, with a turn ≤ 0.6 s later
+  within 150 px (at 1280), is dropped and the turn is the hit (`arrived`, analyzeShuttle 3). The wrong first shot also
+  flipped the side order and caused a false `inferred` shot. Two hits missed in a row (both sides) stay uncounted.
 - **Frame indices must be integers:** `vid.fps` is `averagePacketRate` (29.97…), so `n * fps` needs `Math.round` before it
   indexes anything — `snaps[276.82]` → "Cannot read properties of undefined (reading 't')" right after pass 1 (user report).
 - Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.

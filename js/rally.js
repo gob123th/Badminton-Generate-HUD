@@ -240,7 +240,7 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
   const w = Math.max(2, Math.round(3 * f));
   const vel = (a, b) => (pos[a] && pos[b] ? [(pos[b][0] - pos[a][0]) / (b - a), (pos[b][1] - pos[a][1]) / (b - a)] : null);
   const vt = 1.5 * k / f;
-  const raw_hits = [];
+  const raw_hits = [], arrived = new Set();
   for (let i = w; i < N - w; i++) {
     if (!pos[i]) continue;
     const a = vel(i - w, i), b = vel(i, i + w);
@@ -254,12 +254,16 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
       if (hit) {
         const v = vel(i, i + m);
         hit = hyp(v[0], v[1]) >= 2 * vt || v[1] <= -vt;
+        if (hit && v[1] > 0 && pos[i][1] > 20 * k) arrived.add(i);       // not back in from above the frame
       }
     }
     if (hit) raw_hits.push(i);
   }
+  // first seen falling, then a turn right after and close by: the server's toss, and the turn is the hit (a shot just
+  // seen on its way across moves far further in that time)
+  const real = raw_hits.filter(i => !arrived.has(i) || !raw_hits.some(j => j > i && j - i <= 0.6 * fps && hyp(pos[j][0] - pos[i][0], pos[j][1] - pos[i][1]) < 150 * k));
   let hits = [];
-  for (const i of raw_hits) if (!hits.length || i - hits.at(-1).frame > 0.4 * fps) hits.push({ frame: i });
+  for (const i of real) if (!hits.length || i - hits.at(-1).frame > 0.4 * fps) hits.push({ frame: i });
   const turns = hits;
 
   // 4) hitter = nearest player box (upper body / racket zone), unless someone else (another court) is nearer
