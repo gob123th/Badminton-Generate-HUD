@@ -258,8 +258,9 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     }
     if (hit) raw_hits.push(i);
   }
-  const hits = [];
+  let hits = [];
   for (const i of raw_hits) if (!hits.length || i - hits.at(-1).frame > 0.4 * fps) hits.push({ frame: i });
+  const turns = hits;
 
   // 4) hitter = nearest player box (upper body / racket zone), unless someone else (another court) is nearer
   for (const h of hits) {
@@ -272,7 +273,46 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     if ((others[h.frame] || []).some(b => zoneDist(x, y, b) < bd)) best = null;
     h.player = best && bd < 1.5 ? (best[4] ?? null) : null;
     h.court = best && bd < 1.5 && best.length >= 7 ? [best[5], best[6]] : null;
+    h.reach = bd;
     h.speed = null;
+  }
+  // 4b) a shot = one of our tracked players hitting it. Every other turn of the path (a wobble at the top of a lob, a
+  //     missed frame) counted as a shot too. In reach = racket zone (0.7 box heights) or 135 px: a far player's box is so
+  //     small that the hit frame's shuttle has already left it. The nearest box alone can't name the hitter (a near
+  //     player covers the far side in the image, his zone reaches hundreds of px), but the sides take turns: the side
+  //     due next hits if it is in reach. Only the side that just hit in reach, < 1.2 s later: the same shot, the turn
+  //     closest to the racket stays; later than that the other side's hit was missed and this is a new shot
+  if (boxes.some(b => b?.length)) {
+    const shots = [];
+    for (const h of hits) {
+      const [x, y] = pos[h.frame], fb = boxes[h.frame] || [], sideOf = b => (b.length >= 7 ? b[6] < 6.7 : null);
+      const best = far => {
+        let r = null;
+        for (const b of fb) {
+          if (sideOf(b) !== far) continue;
+          const d = zoneDist(x, y, b), px = d * (b[3] - b[1]);
+          if ((d < 0.7 || px < 135 * k) && (!r || d < r.d)) r = { d, b };
+        }
+        return r;
+      };
+      if ((others[h.frame] || []).some(b => zoneDist(x, y, b) < Math.min(Infinity, ...fb.map(q => zoneDist(x, y, q))))) continue;
+      const set = (who, far) => { h.player = who.b[4] ?? null; h.court = far === null ? null : [who.b[5], who.b[6]]; h.reach = who.d; h.far = far; };
+      const F = best(true), Ne = best(false), U = best(null), last = shots.at(-1);
+      if (!F && !Ne && !U) continue;
+      if (U) { set(U, null); shots.push(h); continue; }           // boxes without court positions: no sides to go by
+      const live = last && h.frame - last.frame < 4 * fps;
+      const due = live ? !last.far : (F && Ne ? F.d <= Ne.d : !!F), dueWho = due ? F : Ne;
+      if (dueWho) { set(dueWho, due); shots.push(h); continue; }
+      const who = due ? Ne : F, otherTracked = fb.some(b => sideOf(b) === due);
+      set(who, !due);
+      if (otherTracked && h.frame - last.frame < 1.2 * fps) { if (h.reach < last.reach) shots[shots.length - 1] = h; }
+      else {
+        // the shuttle was lost while the other side hit (the circle gone is no reason to lose the shot): count it
+        if (otherTracked) shots.push({ frame: Math.round((last.frame + h.frame) / 2), player: null, court: null, speed: null, far: due, inferred: true });
+        shots.push(h);
+      }
+    }
+    hits = shots;
   }
   // speed estimate from court geometry: hitter → receiver distance D over flight time T,
   // undoing air drag: D = L·ln(1 + v0·T/L), L = vt²/g (shuttle terminal velocity vt ≈ 7 m/s)
@@ -302,7 +342,7 @@ export function analyzeShuttle(raw, boxes, { fps = 30, width = 1280, others = []
     let end = last; while (end + 1 < N && pos[end + 1] && end - last < 3 * fps) end++;
     return { start: r.hits[0].frame, end: Math.max(end, last + Math.round(0.5 * fps)), hits: r.hits, serve: r.hits[0] };
   });
-  return { pos, hits, rallies: out, view: smoothPath(pos, hits, { fps, width }) };
+  return { pos, hits, rallies: out, view: smoothPath(pos, turns, { fps, width }) };
 }
 
 /**
@@ -433,7 +473,7 @@ export function ralliesFromServes(an, serves, boxes, fps = 30) {
     }
     const start = Math.max(0, Math.min(serve?.frame ?? sv.frame, sv.frame));
     // TrackNet often loses the shuttle in play: at least 4 s; `limit` (next serve's quiet stretch) bounds the review clip
-    const end = Math.min(limit, Math.max(hits.length ? hits.at(-1).frame + Math.round(1.5 * fps) : 0, start + 4 * fps));
+    const end = Math.min(limit, Math.max(hits.length ? hits.at(-1).frame + Math.round(1.5 * fps) : 0, start + Math.round(4 * fps)));
     return { start, end: Math.max(end, start + 1), limit, hits, serve, box: sv.box ?? null, byServe: true };
   });
 }
@@ -471,12 +511,12 @@ export function pickHighlights(an, { count = 5, fps = 30, pad = 1, tail = 2, ski
  */
 export function downAt(an, i, fps = 30, tail = 2, max = 25) {
   const N = an.pos.length, r = an.rallies[i];
-  if (r.limit != null) return Math.max(r.end, Math.min(r.limit, r.start + max * fps, N - 1));
+  if (r.limit != null) return Math.max(r.end, Math.min(r.limit, r.start + Math.round(max * fps), N - 1));
   const bound = Math.min(N - 1, an.rallies[i + 1] ? an.rallies[i + 1].start - 1 : N - 1);
   const from = r.hits.at(-1)?.frame ?? r.start, gap = Math.round(0.7 * fps);
   let down = from;
   for (let k = from + 1; k <= bound && k - down <= gap; k++) if (an.pos[k]) down = k;
-  return Math.max(r.start + 1, Math.min(bound, Math.max(r.end, down + Math.round(tail * fps), from + 3 * fps)));
+  return Math.max(r.start + 1, Math.min(bound, Math.max(r.end, down + Math.round(tail * fps), from + Math.round(3 * fps))));
 }
 
 const posNear = (pos, f, w = 5) => {

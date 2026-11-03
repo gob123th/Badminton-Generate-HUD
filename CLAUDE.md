@@ -171,6 +171,14 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **Hits** = horizontal velocity reversal, or falling→rising (gravity can't do that), or a new flight appearing *that leaves
   fast or rising* (a lob re-acquired mid-air, falling slowly, gave a fake hit + speed badge); dedupe 0.4 s. Rally = hits chained < 4 s apart with no shuttle loss > 1 s between them, ≥ 2 hits
   (without the loss rule, casual hits between points chained a whole 40 s clip into one rally).
+- **Shots** (`analyzeShuttle` 4b): a turn of the path counts only if a tracked player is in reach (0.7 box heights or 135 px);
+  the nearest box can't name the hitter (near players cover the far side), so the side due next takes it; the same side
+  again < 1.2 s later = the same shot, later = the other side's hit was missed while the circle was gone → `inferred` shot
+  (no player, no speed). `an.view` still splits at every turn. Checked by eye on "หมู มาย…" 212–215 s: 5 of 5. Wrist speed
+  from the pose keypoints was tried as the shot signal and rejected: at stride 5 almost no signal; at stride 1 on the same
+  rally it missed near-side shots and fired on partners standing together. A rally with no turn at all for seconds is still uncounted.
+- **Frame indices must be integers:** `vid.fps` is `averagePacketRate` (29.97…), so `n * fps` needs `Math.round` before it
+  indexes anything — `snaps[276.82]` → "Cannot read properties of undefined (reading 't')" right after pass 1 (user report).
 - Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.
 - Models > 30 MB must be split for some transfer tools; GitHub accepts ≤ 100 MB per file. Don't ship zips without `models/`.
 - Headless Chromium crashes on WebGPU inference — force WASM (`navigator.gpu = undefined`) for automated tests; it's ~1 fps there.
