@@ -261,6 +261,8 @@ body.in-app .site-foot { display: none; }
 .callout { background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--cyan); border-radius: var(--radius); padding: 18px; }
 .callout h2 { margin-bottom: 8px; }
 .callout p { margin: 0 0 10px; }
+.callout.warn { border-left-color: var(--warn); }
+.band .body { margin: 0 0 10px; color: #c8d6ee; line-height: 1.7; }
 .plain { margin: 0; padding-left: 20px; color: #c8d6ee; }
 .plain li { margin-bottom: 6px; }
 .plain b, .prose b { color: var(--text); font-weight: 600; }

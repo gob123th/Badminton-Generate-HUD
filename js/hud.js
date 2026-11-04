@@ -1,5 +1,6 @@
 // Canvas HUD renderer (broadcast / game style). Thai text renders natively via canvas + Kanit.
 import { COURT_L, COURT_W, NET_Y, courtLines } from './court.js';
+import { SMASH_SECS } from './rally.js';
 
 export const FONT_THAI = 'HUD Thai';        // Kanit SemiBold
 export const FONT_DISPLAY = 'HUD Display';  // Bebas Neue (Latin/numbers only)
@@ -36,7 +37,7 @@ export const SPEED_RANKS = [
 export const RANK_MIN = { SSS: 500, SS: 400, S: 300, A: 200, B: 100 };
 export const speedRank = (kmh, min = RANK_MIN) => SPEED_RANKS.find(r => r.rank === 'C' || kmh >= (min[r.rank] ?? RANK_MIN[r.rank]));
 const BADGE_FADE = 0.3;                       // fade-out after cfg.render.badge.secs
-const BADGE_W = 300, BADGE_H = 72;            // badge size at scale 1 (fits 3 digits + the longest rank name)
+const BADGE_W = 190, BADGE_H = 50;            // badge spot at scale 1 (the widest case: 3 digits, the longest rank name); drawn to fit its text
 const PANEL_W = 480, PANEL_W_STATS = 700;     // player panel width at scale 1, without / with the speed columns
 // COCO keypoints: shoulders, arms, torso, legs
 const BONES = [[5, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16]];
@@ -144,6 +145,7 @@ export class HudRenderer {
       for (const p of shown) this.ring(g, p, st.t);
       if (r.skeleton) for (const p of shown) if (p.kps) this.skeleton(g, p);
       if (st.shuttle && r.shuttle) this.shuttle(g, st.shuttle, r.badge?.mode === 'hit');
+      if (st.shuttle?.smash?.at && r.shuttle && r.smash?.enabled) this.smash(g, st.shuttle.smash, st.players);
       if (r.tags !== false) for (const p of [...shown].sort((a, b) => a.head[1] - b.head[1])) this.tag(g, p, st.stats);
     });
     if (r.topHud) this.topHud(ctx, st.shuttle, st.preview);
@@ -542,6 +544,42 @@ export class HudRenderer {
     if (badge && sh.speedLabel?.at) this.speedBadge(ctx, sh.speedLabel, sh.speedLabel.at);
   }
 
+  // ---------------------------------------------------------------- SMASH! call: no box, so it hides little of the
+  // court; up-left of the hit (the speed badge sits up-right), flipped to stay in frame
+  smash(ctx, { age, at, player }, players) {
+    const s = this.s, fade = 0.3, a = Math.min(1, (SMASH_SECS - age) / fade);
+    if (a <= 0) return;
+    const [x, y] = at, text = 'SMASH!', name = players[player]?.name, pop = age < 0.12 ? 1 + (1 - age / 0.12) * 0.35 : 1;
+    ctx.save();
+    ctx.globalAlpha = a;
+    if (age < 0.3) {                                 // impact rays
+      const u = age / 0.3, col = '#FFE14D';
+      ctx.strokeStyle = col; ctx.lineWidth = 3 * s * (1 - u); ctx.shadowColor = col; ctx.shadowBlur = 12 * s;
+      for (let k = 0; k < 12; k++) {
+        const th = (k / 12) * Math.PI * 2 + 0.2, r0 = (18 + 30 * u) * s, r1 = (30 + 62 * u) * s;
+        ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * r0, y + Math.sin(th) * r0); ctx.lineTo(x + Math.cos(th) * r1, y + Math.sin(th) * r1); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
+    ctx.font = font(58 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`;
+    const w = ctx.measureText(text).width, h = 58 * s + (name ? 24 * s : 0);
+    let tx = x - 30 * s - w, ty = y - 26 * s - h;
+    if (tx < 10 * s) tx = x + 30 * s;
+    if (tx + w > this.W - 10 * s) tx = this.W - 10 * s - w;
+    if (ty < 10 * s) ty = y + 26 * s;
+    if (ty + h > this.H - 10 * s) ty = this.H - 10 * s - h;
+    ctx.translate(tx + w / 2, ty + 29 * s); ctx.scale(pop, pop); ctx.transform(1, 0, -0.14, 1, 0, 0);   // leaning forward
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = `rgba(${DARK},0.9)`; ctx.lineWidth = 7 * s; ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = '#FFE14D'; ctx.shadowColor = '#FF7A00'; ctx.shadowBlur = 16 * s * this.th.glow; ctx.fillText(text, 0, 0);
+    ctx.shadowBlur = 0; ctx.letterSpacing = '0px';
+    if (name) {
+      ctx.font = font(22 * s, FONT_THAI); ctx.lineWidth = 5 * s; ctx.strokeText(name, 0, 38 * s);
+      ctx.fillStyle = '#FFFFFF'; ctx.fillText(name, 0, 38 * s);
+    }
+    ctx.restore();
+  }
+
   // ---------------------------------------------------------------- highlight reel: clip banner + fade between clips
   /** clip: {index, total, shots, top (km/h | null)}; age / left = seconds since the clip start / until its end */
   highlight(ctx, clip, age, left) {
@@ -581,10 +619,16 @@ export class HudRenderer {
     const rk = this.rankOf(speed), secs = this.cfg.render.badge?.secs ?? 0.7;
     const a = Math.max(0, 1 - Math.max(0, age - secs) / BADGE_FADE);
     if (a <= 0) return;
-    const pop = age < 0.15 ? 1 + (1 - age / 0.15) * 0.45 : 1;
-    const s = at ? this.s : this.s * this.scaleOf('speedBadge'), w = BADGE_W * s, h = BADGE_H * s;
+    const pop = age < 0.15 ? 1 + (1 - age / 0.15) * 0.2 : 1;
+    const s = at ? this.s : this.s * this.scaleOf('speedBadge'), h = BADGE_H * s;
+    const num = String(speed), skew = 8 * s, rb = 44 * s, pad = 10 * s, gap = 6 * s, spacing = `${s}px`;
+    const fNum = font(38 * s, FONT_DISPLAY), fSmall = font(13 * s, FONT_DISPLAY);
     let bx, by;
     ctx.save();
+    ctx.font = fNum; const tw = ctx.measureText(num).width;
+    ctx.font = fSmall; ctx.letterSpacing = spacing;
+    const w = rb + pad + Math.max(tw + gap + ctx.measureText('KM/H EST').width, ctx.measureText(rk.name).width) + pad + (this.angled ? skew : 0);
+    ctx.letterSpacing = '0px';
     ctx.globalAlpha = a;
     if (at) {
       const [x, y] = at;
@@ -606,8 +650,6 @@ export class HudRenderer {
       ctx.strokeStyle = rk.color; ctx.lineWidth = 1.5 * s;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx + (bx > x ? 0 : w), by + h / 2); ctx.stroke();
     } else [bx, by] = this.rect('speedBadge');
-    const num = String(speed), skew = 12 * s, rb = 64 * s, pad = 14 * s;
-    ctx.font = font(52 * s, FONT_DISPLAY); const tw = ctx.measureText(num).width;
     ctx.translate(bx + w / 2, by + h / 2); ctx.scale(pop, pop); ctx.translate(-w / 2, -h / 2);
     this.frame(ctx, 0, 0, w, h, { skew }); ctx.fillStyle = `rgba(${this.th.panel},0.88)`; ctx.fill();
     ctx.strokeStyle = rgba(rk.color, 0.7); ctx.lineWidth = 1.5 * s; ctx.stroke();
@@ -617,13 +659,13 @@ export class HudRenderer {
     ctx.shadowBlur = 0;
     this.corners(ctx, 0, 0, w, h, rk.color);
     ctx.fillStyle = `rgb(${DARK})`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.font = font([54, 44, 34][rk.rank.length - 1] * s, FONT_DISPLAY); ctx.fillText(rk.rank, rb / 2 + 2 * s, h / 2 + [19, 16, 12][rk.rank.length - 1] * s);
+    ctx.font = font([38, 30, 23][rk.rank.length - 1] * s, FONT_DISPLAY); ctx.fillText(rk.rank, rb / 2 + s, h / 2 + [13, 11, 8][rk.rank.length - 1] * s);
     ctx.textAlign = 'left';
     const tx = rb + pad;
-    ctx.font = font(52 * s, FONT_DISPLAY); ctx.fillStyle = this.th.text; ctx.fillText(num, tx, 46 * s);
-    ctx.font = font(17 * s, FONT_DISPLAY); ctx.letterSpacing = `${2 * s}px`;
-    ctx.fillStyle = rk.color; ctx.fillText('KM/H EST', tx + tw + 8 * s, 44 * s);
-    ctx.fillText(rk.name, tx, 64 * s);
+    ctx.font = fNum; ctx.fillStyle = this.th.text; ctx.fillText(num, tx, 31 * s);
+    ctx.font = fSmall; ctx.letterSpacing = spacing;
+    ctx.fillStyle = rk.color; ctx.fillText('KM/H EST', tx + tw + gap, 30 * s);
+    ctx.fillText(rk.name, tx, 44 * s);
     ctx.restore();
   }
 }

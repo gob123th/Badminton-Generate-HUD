@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG = {
     // shot-speed badge: mode 'hit' (next to the hit point) | 'fixed' (layout spot 'speedBadge') | 'off';
     // secs shown before a 0.3 s fade; ranks = minimum km/h per rank (hud.js SPEED_RANKS, C below B)
     badge: { mode: 'hit', secs: 0.7, ranks: { SSS: 500, SS: 400, S: 300, A: 200, B: 100 } },
+    smash: { enabled: true, minKmh: 100 },   // SMASH! call at the hit point; rules in rally.js markSmashes
     // panel placement from the step-4 editor: {x, y (top-left, fractions of the frame), scale}; null = default spot
     layout: { topHud: null, playerPanel: null, courtMap: null },
     // output: 'overlay' = HUD on the video; 'landscape' 16:9 / 'portrait' 9:16 = video inset, panels around it (own layouts)

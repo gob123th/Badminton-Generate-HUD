@@ -10,7 +10,7 @@ import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker, interpolateBetween, footPoint } from './players.js';
 import { StatsTracker, playerMetrics, trailsAt, positionGrid } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
-import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes } from './rally.js';
+import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes, markSmashes } from './rally.js';
 import { t } from './i18n.js';
 
 export async function openVideo(file) {
@@ -161,6 +161,7 @@ export async function renderVideo(opts) {
   // rallies from serve to serve (players' positions vs the service lines) when serves were found; else hit chains
   const serves = an ? detectServes(boxes, { fps }) : [];
   if (serves.length >= 2) an.rallies = ralliesFromServes(an, serves, boxes, fps);
+  if (an) markSmashes(an, boxes, fps, cfg.render.smash.minKmh);
   const metrics = snaps.length ? playerMetrics(snaps, an?.rallies, fps, cfg.tracking.maxSpeed) : null;
 
   // ---------------------------------------------------------- score: auto guess, then optional user review
@@ -307,7 +308,7 @@ export async function renderVideo(opts) {
           max_speed_kmh_est: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null,
           players: Object.fromEntries((metrics?.perRally[i] ?? []).map((s, k) => [names[k], { distance_m: round2(s.distance), max_speed_ms_est: round2(s.top) }])),
         })),
-        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed, cfg.render.badge.ranks).rank : null })),
+        shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed, cfg.render.badge.ranks).rank : null, smash_est: !!h.smash })),
       } : null,
       highlight: hl ? hl.spans.map(c => ({ clip: c.index, start_s: +(start + c.t0).toFixed(2), duration_s: +(c.t1 - c.t0).toFixed(2), rallies: c.rallies.map(i => i + 1), shots: c.shots, max_speed_kmh_est: c.top })) : null,
       score: score ? {

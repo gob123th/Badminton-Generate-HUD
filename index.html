@@ -110,8 +110,24 @@
           <li data-i18n="home.l1"></li>
           <li data-i18n="home.l2"></li>
           <li data-i18n="home.l3"></li>
-          <li data-i18n="home.l4"></li>
         </ul>
+      </div>
+    </section>
+
+    <section class="band split">
+      <div>
+        <h2 data-i18n="home.time"></h2>
+        <p class="body" data-i18n="home.timed"></p>
+        <ul class="plain">
+          <li data-i18n="home.t1"></li>
+          <li data-i18n="home.t2"></li>
+          <li data-i18n="home.t3"></li>
+        </ul>
+        <p class="hint" data-i18n="home.tip"></p>
+      </div>
+      <div class="callout warn">
+        <h2 data-i18n="home.device"></h2>
+        <p data-i18n="home.deviced"></p>
       </div>
     </section>
   </main>
@@ -324,6 +340,10 @@
         </div>
         <div class="badge-opts">
           <label class="inline"><input type="checkbox" id="r-shuttleMark"> <span data-i18n="opt.shuttleMark"></span></label>
+          <label class="inline"><input type="checkbox" id="r-smash"> <span data-i18n="opt.smash"></span></label>
+          <div class="row">
+            <label><span data-i18n="smash.min"></span><input type="number" id="smash-min" min="1" max="420" step="10"></label>
+          </div>
           <div class="row">
             <label><span data-i18n="badge.mode"></span>
               <select id="badge-mode">

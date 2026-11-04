@@ -188,6 +188,10 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   at 18 s MOVE 32.2 / 31.6 m and TOP 4.8 / 4.5 m/s vs its screenshot's 33.26 / 34.43 m and 4.33 / 4.59 m/s (the two agree; neither is
   ground truth). So on that footage the player values match: a gap on our own clips would come from the footage (oblique camera, doubles,
   neighbouring courts) — no evidence yet for a pose-model swap; not compared on our clips. Its rally counter is template matching for broadcast cuts and its hit analysis is disabled: nothing to take there.
+- **SMASH! call** (`cfg.render.smash`, `markSmashes` in rally.js): speed alone also called serves and lobs, because shot speed is
+  D/T (demo clips: serve 131 km/h, a T = 1.2 s overhead 120 km/h). Rule: speed ≥ minKmh, not the serve, next hit ≤ 0.9 s, contact −0.6…+0.15
+  box heights from the box top. On Good-Badminton's clips it fires at `demo1` 3.7 s and 7.8 s and nowhere in `demo`. **Not verified on a
+  real smash:** those clips show no clear one. Tune it on a clip with known smashes.
 - **Privacy notice = a promise:** adding a network call, storing something new or changing a third party means updating
   `privacy.*` in i18n.js (both languages) and its date. Umami (index.html) is the one analytics call; never send anything from a video.
 - **Frame indices must be integers:** `vid.fps` is `averagePacketRate` (29.97…), so `n * fps` needs `Math.round` before it

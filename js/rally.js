@@ -527,9 +527,27 @@ const posNear = (pos, f, w = 5) => {
   for (let d = 0; d <= w; d++) { const p = pos[f - d] ?? pos[f + d]; if (p) return p; }
   return null;
 };
+const SMASH_MAX_T = 0.9;          // s to the next hit: a clear can also score a high speed estimate, but it hangs in the air
+const SMASH_REACH = [-0.6, 0.15]; // contact height, box heights below the box top: above the head, within arm + racket
+export const SMASH_SECS = 1;      // how long the SMASH! call stays up, fade included
+/**
+ * Marks h.smash on shots that look like one: fast (estimate ≥ minKmh), not the serve, quickly at the other side, hit
+ * from above the head. Speed alone also called serves and lobs (shot speed is D/T). A guess from the path: labelled, not measured.
+ */
+export function markSmashes(an, boxes, fps, minKmh = 100) {
+  const serves = new Set(an.rallies.flatMap(r => [r.hits[0]?.frame, r.serve?.frame]));
+  an.hits.forEach((h, j) => {
+    const n = an.hits[j + 1], p = an.pos[h.frame], b = (boxes[h.frame] || []).find(x => x[4] === h.player);
+    h.smash = false;
+    if (!n || !p || !b || h.speed == null || h.speed < minKmh || serves.has(h.frame)) return;
+    const rel = (p[1] - b[1]) / Math.max(b[3] - b[1], 1);
+    h.smash = (n.frame - h.frame) / fps <= SMASH_MAX_T && rel >= SMASH_REACH[0] && rel <= SMASH_REACH[1];
+  });
+}
+
 /** HUD state for frame i; badgeSecs = how long the shot-speed badge stays up after a hit (HudRenderer.badgeSecs). */
 export function shuttleStateAt(an, i, fps, badgeSecs = 1) {
-  const s = { pos: (an.view ?? an.pos)[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, live: false, score: null };
+  const s = { pos: (an.view ?? an.pos)[i], rallyTime: null, rallyCount: null, lastSpeed: null, speedLabel: null, smash: null, live: false, score: null };
   if (an.score) for (const e of an.score) { if (e.frame <= i) s.score = e; else break; }
   let rally = null;
   for (const r of an.rallies) { if (r.start <= i) rally = r; else break; }
@@ -540,6 +558,7 @@ export function shuttleStateAt(an, i, fps, badgeSecs = 1) {
   }
   for (const h of an.hits) {
     if (h.frame > i) break;
+    if (h.smash && i - h.frame < SMASH_SECS * fps) s.smash = { age: (i - h.frame) / fps, at: posNear(an.view ?? an.pos, h.frame), player: h.player };
     if (h.speed != null) {
       s.lastSpeed = h.speed;
       // pinned where the shot was hit (a badge following the shuttle was gone before it could be read)

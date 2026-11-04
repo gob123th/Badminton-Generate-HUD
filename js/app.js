@@ -282,6 +282,7 @@ function syncControls() {
   $('stage-mode').value = r.stage; $('theme').value = r.theme; $('frame').value = r.frame; $('ring-style').value = r.ringStyle; $('ring-color').value = r.ringColor;
   for (const k of ['A', 'B']) $('tc-' + k).value = r.teamColors[k];
   $('badge-mode').value = r.badge.mode; $('badge-secs').value = String(r.badge.secs);
+  $('r-smash').checked = !!r.smash.enabled; $('smash-min').value = r.smash.minKmh;
   for (const k of RANKS) $('rank-' + k).value = r.badge.ranks[k];
   $('hl-on').checked = !!state.cfg.highlight.enabled; $('hl-count').value = String(state.cfg.highlight.count);
   syncScoreOpts();
@@ -314,6 +315,12 @@ $('ring-color').onchange = e => setRender('ringColor', e.target.value);
 const RANKS = ['SSS', 'SS', 'S', 'A', 'B'];
 $('badge-mode').onchange = e => { state.cfg.render.badge.mode = e.target.value; save(); layoutEd.draw(); };
 $('badge-secs').onchange = e => { state.cfg.render.badge.secs = +e.target.value; save(); };
+$('r-smash').onchange = e => { state.cfg.render.smash.enabled = e.target.checked; save(); };
+$('smash-min').onchange = e => {
+  const v = Math.round(+e.target.value);
+  state.cfg.render.smash.minKmh = v > 0 ? v : DEFAULT_CONFIG.render.smash.minKmh;
+  e.target.value = state.cfg.render.smash.minKmh; save();
+};
 for (const k of RANKS) $('rank-' + k).onchange = e => {
   const v = Math.round(+e.target.value);
   state.cfg.render.badge.ranks[k] = v > 0 ? v : DEFAULT_CONFIG.render.badge.ranks[k];
