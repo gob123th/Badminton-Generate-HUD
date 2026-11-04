@@ -246,6 +246,12 @@ body.in-app .site-foot { display: none; }
 .lead { font-size: 17px; line-height: 1.7; color: #c8d6ee; margin: 0 0 22px; }
 .cta { display: flex; gap: 10px; flex-wrap: wrap; }
 .cta .button { padding: 11px 18px; font-size: 15px; }
+a.button.coffee { background: #ffdd00; border-color: #ffdd00; color: #1a1400; font-weight: 600; }
+a.button.coffee:hover { background: #ffe94d; border-color: #ffe94d; }
+.support { display: flex; align-items: center; justify-content: space-between; gap: 18px 28px; flex-wrap: wrap; background: var(--panel-2); border: 1px solid rgba(255, 221, 0, 0.45); border-radius: var(--radius); padding: 22px 24px; }
+.support h2 { margin: 0 0 4px; }
+.support p { margin: 0; color: #c8d6ee; max-width: 620px; }
+.support .button { padding: 12px 22px; font-size: 16px; white-space: nowrap; }
 .hero-art { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 12px; }
 .band { margin-top: 56px; }
 .band h2 { font-size: 24px; font-weight: 600; margin: 0 0 18px; }

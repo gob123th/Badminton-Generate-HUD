@@ -194,6 +194,7 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
   real smash:** those clips show no clear one. Tune it on a clip with known smashes.
 - **Privacy notice = a promise:** adding a network call, storing something new or changing a third party means updating
   `privacy.*` in i18n.js (both languages) and its date. Umami (index.html) is the one analytics call; never send anything from a video.
+  Buy Me a Coffee is a plain link on purpose: its widget script would add a network call on every page load.
 - **Frame indices must be integers:** `vid.fps` is `averagePacketRate` (29.97…), so `n * fps` needs `Math.round` before it
   indexes anything — `snaps[276.82]` → "Cannot read properties of undefined (reading 't')" right after pass 1 (user report).
 - Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.

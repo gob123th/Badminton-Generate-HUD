@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-label="Badminton HUD: an illustrated court with player rings, a shuttle path and game-style stat panels">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f2450"/>
+      <stop offset="0.6" stop-color="#060c18"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .t { font-family: Impact, "Arial Narrow Bold", "Helvetica Neue", Arial, sans-serif; }
+      .s { font-family: "Helvetica Neue", Arial, sans-serif; }
+    </style>
+  </defs>
+  <rect width="1200" height="420" rx="16" fill="url(#bg)"/>
+
+  <!-- title -->
+  <polygon points="66,118 84,118 70,178 52,178" fill="#00e5ff" filter="url(#glow)"/>
+  <text class="t" x="96" y="176" font-size="64" letter-spacing="3" fill="#e8f0ff">BADMINTON <tspan fill="#00e5ff">HUD</tspan></text>
+  <text class="s" x="52" y="226" font-size="21" fill="#c8d6ee">Turn any fixed-camera clip into a broadcast.</text>
+  <text class="s" x="52" y="258" font-size="21" fill="#8ea3c4">AI tracking and game-style overlays, right in your browser.</text>
+  <g class="s" font-size="16" fill="#00e5ff">
+    <rect x="52" y="296" width="146" height="36" rx="18" fill="#00e5ff" fill-opacity=".1" stroke="#00e5ff" stroke-opacity=".5"/>
+    <text x="125" y="320" text-anchor="middle">100% client-side</text>
+    <rect x="210" y="296" width="118" height="36" rx="18" fill="#00e5ff" fill-opacity=".1" stroke="#00e5ff" stroke-opacity=".5"/>
+    <text x="269" y="320" text-anchor="middle">No sign-up</text>
+    <rect x="340" y="296" width="128" height="36" rx="18" fill="#00e5ff" fill-opacity=".1" stroke="#00e5ff" stroke-opacity=".5"/>
+    <text x="404" y="320" text-anchor="middle">No uploads</text>
+  </g>
+
+  <!-- court -->
+  <polygon points="830,56 1040,56 1126,362 744,362" fill="#12564c"/>
+  <g fill="none" stroke="#e8f0ff" stroke-opacity=".75" stroke-width="2">
+    <polygon points="830,56 1040,56 1126,362 744,362"/>
+    <path d="M845,56 758,362 M1025,56 1112,362 M935,56V178 M935,240V362 M823,86H1047 M804,178H1066 M786,240H1084 M752,330H1118"/>
+  </g>
+  <rect x="770" y="207" width="330" height="4" fill="#00e5ff" filter="url(#glow)"/>
+
+  <!-- movement trails, rings, shuttle path -->
+  <path d="M880,276 C910,310 952,276 985,318" fill="none" stroke="#ff3d7f" stroke-opacity=".75" stroke-width="4" stroke-linecap="round"/>
+  <path d="M895,84 C918,120 962,102 976,136" fill="none" stroke="#00e5ff" stroke-opacity=".75" stroke-width="4" stroke-linecap="round"/>
+  <ellipse cx="976" cy="138" rx="26" ry="10" fill="#00e5ff" fill-opacity=".2" stroke="#00e5ff" stroke-width="3" filter="url(#glow)"/>
+  <ellipse cx="986" cy="320" rx="38" ry="15" fill="#ff3d7f" fill-opacity=".2" stroke="#ff3d7f" stroke-width="3" filter="url(#glow)"/>
+  <path d="M1030,104 Q980,0 846,158" fill="none" stroke="#fff" stroke-opacity=".4" stroke-dasharray="5 9" stroke-width="2.5"/>
+  <circle cx="1030" cy="104" r="10" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="2.5"/>
+
+  <!-- stat panels -->
+  <g class="t" fill="#e8f0ff">
+    <rect x="620" y="44" width="150" height="66" rx="5" fill="#060c18" fill-opacity=".92" stroke="#1f3260"/>
+    <text x="695" y="66" font-size="14" text-anchor="middle" fill="#9fb4d0" letter-spacing="1">RALLY COUNT</text>
+    <text x="695" y="99" font-size="30" text-anchor="middle">12 <tspan font-size="14" fill="#00e5ff">SHOT</tspan></text>
+    <rect x="620" y="124" width="150" height="66" rx="5" fill="#060c18" fill-opacity=".92" stroke="#1f3260"/>
+    <text x="695" y="146" font-size="14" text-anchor="middle" fill="#9fb4d0" letter-spacing="1">SHOT SPEED (EST.)</text>
+    <text x="695" y="179" font-size="30" text-anchor="middle">131 <tspan font-size="14" fill="#00e5ff">KM/H</tspan></text>
+    <rect x="620" y="204" width="150" height="66" rx="5" fill="#060c18" fill-opacity=".92" stroke="#1f3260"/>
+    <text x="695" y="226" font-size="14" text-anchor="middle" fill="#9fb4d0" letter-spacing="1">PLAYER SPEED (EST.)</text>
+    <text x="695" y="259" font-size="30" text-anchor="middle">4.8 <tspan font-size="14" fill="#ff3d7f">M/S</tspan></text>
+  </g>
+  <text class="t" x="1064" y="80" font-size="34" fill="#ffe14d" stroke="#081228" stroke-width="5" paint-order="stroke" transform="rotate(-4 1064 80)">SMASH!</text>
+</svg>
