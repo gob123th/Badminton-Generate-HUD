@@ -279,6 +279,7 @@ function syncControls() {
   $('score-review').checked = !!state.cfg.score.review;
   $('score-a').value = state.cfg.score.start.A; $('score-b').value = state.cfg.score.start.B;
   const r = state.cfg.render;
+  $('tag-size').value = String(r.tagScale);
   $('stage-mode').value = r.stage; $('theme').value = r.theme; $('frame').value = r.frame; $('ring-style').value = r.ringStyle; $('ring-color').value = r.ringColor;
   for (const k of ['A', 'B']) $('tc-' + k).value = r.teamColors[k];
   $('badge-mode').value = r.badge.mode; $('badge-secs').value = String(r.badge.secs);
@@ -306,6 +307,7 @@ $('btn-layout-reset').onclick = () => {
 $('score-review').onchange = e => { state.cfg.score.review = e.target.checked; save(); };
 // HUD style: theme / floor ring (the step-4 preview redraws live)
 const setRender = (k, v) => { state.cfg.render[k] = v; save(); syncScoreOpts(); layoutEd.draw(); };
+$('tag-size').onchange = e => setRender('tagScale', +e.target.value);
 $('theme').onchange = e => setRender('theme', e.target.value);
 $('stage-mode').onchange = e => { setRender('stage', e.target.value); if (layoutEd.active) openLayout(); };   // canvas size changes
 $('frame').onchange = e => setRender('frame', e.target.value);

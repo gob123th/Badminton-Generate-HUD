@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG = {
   highlight: { enabled: true, count: 5 },                          // extra reel of the best rallies; count 0 = all
   render: {
     ringRadiusM: 0.55, tags: true, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false,
+    tagScale: 0.6,        // name tag size: 0.6 small, 0.8 medium, 1 large (at 1 they covered much of the court)
     playerStats: true,    // player panel: speed / peak / rally distance columns
     trails: true,         // court map: each player's last 1.5 s
     skeleton: false,      // pose keypoints over the players (snapshots keep them only when on)

@@ -302,7 +302,8 @@ export class HudRenderer {
 
   // ---------------------------------------------------------------- name tag
   tag(ctx, p, stats) {
-    const s = this.s, col = p.color, frac = stats.staminaFrac(p.idx), num = stats.stamina(p.idx).toFixed(0);
+    // cfg.render.tagScale, with a floor so a name stays readable on small videos
+    const s = Math.max(this.s * (this.cfg.render.tagScale ?? 0.6), 0.45), col = p.color, frac = stats.staminaFrac(p.idx), num = stats.stamina(p.idx).toFixed(0);
     ctx.save();
     const fName = font(24 * s, FONT_THAI), fNum = font(32 * s, FONT_DISPLAY), fLbl = font(17 * s, FONT_DISPLAY);
     ctx.font = fName; const wName = ctx.measureText(p.name).width;
