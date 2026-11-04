@@ -12,6 +12,9 @@ export const DEFAULT_CONFIG = {
   highlight: { enabled: true, count: 5 },                          // extra reel of the best rallies; count 0 = all
   render: {
     ringRadiusM: 0.55, tags: true, topHud: true, playerPanel: true, courtMap: true, shuttle: true, showIds: false,
+    playerStats: true,    // player panel: speed / peak / rally distance columns
+    trails: true,         // court map: each player's last 1.5 s
+    skeleton: false,      // pose keypoints over the players (snapshots keep them only when on)
     theme: 'broadcast', frame: 'angled',  // hud.js THEMES / FRAMES
     ringStyle: 'neon', ringColor: 'player', teamColors: { A: '#FF5A36', B: '#2E9BFF' },   // floor ring: neon|solid|minimal, player|team|theme
     shuttleMark: true,    // faint circle on the shuttle

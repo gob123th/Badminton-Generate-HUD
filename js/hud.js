@@ -37,6 +37,10 @@ export const RANK_MIN = { SSS: 500, SS: 400, S: 300, A: 200, B: 100 };
 export const speedRank = (kmh, min = RANK_MIN) => SPEED_RANKS.find(r => r.rank === 'C' || kmh >= (min[r.rank] ?? RANK_MIN[r.rank]));
 const BADGE_FADE = 0.3;                       // fade-out after cfg.render.badge.secs
 const BADGE_W = 300, BADGE_H = 72;            // badge size at scale 1 (fits 3 digits + the longest rank name)
+const PANEL_W = 480, PANEL_W_STATS = 700;     // player panel width at scale 1, without / with the speed columns
+// COCO keypoints: shoulders, arms, torso, legs
+const BONES = [[5, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16]];
+const KP_CONF = 0.35;
 
 const rgba = (hex, a) => {
   const h = hex.replace('#', '');
@@ -89,19 +93,21 @@ export class HudRenderer {
     const W = this.W, H = this.H, s = this.s, m = 28 * s;
     this.defScale = {};
     if (this.stage === 'landscape') {
-      let vw = W - (480 * s + 3 * m), vh = (vw * H) / W;
+      let vw = W - (PANEL_W * s + 3 * m), vh = (vw * H) / W;
       if (vh > H - 96 * s - 3 * m) { vh = H - 96 * s - 3 * m; vw = (vh * W) / H; }
       this.OW = W; this.OH = H; this.video = [m, m, vw, vh];
+      this.defScale = { playerPanel: PANEL_W / this.panelW };   // the column stays PANEL_W wide: the video keeps its size
     } else if (this.stage === 'portrait') {
       const OW = even(H), OH = even((OW * 16) / 9), vh = (OW * H) / W;
       const kTop = (OW - 2 * m) / (TOP_W1 * s), [mw, mh] = this.mapInner(1);
-      const kRow = (OW - 3 * m) / ((480 + mw + 44) * s), n = this.cfg.players.length;
+      const kRow = (OW - 3 * m) / ((this.panelW + mw + 44) * s), n = this.cfg.players.length;
       const rowH = Math.max((34 + 64 * n) * s * kRow, (mh + 82) * s * kRow);
       const total = 96 * s * kTop + m + vh + m + rowH, top = Math.max(m, (OH - total) / 2);
       this.OW = OW; this.OH = OH; this.video = [0, top + 96 * s * kTop + m, OW, vh];
       this.defScale = { topHud: kTop, playerPanel: kRow, courtMap: kRow };
     } else { this.OW = W; this.OH = H; this.video = [0, 0, W, H]; }
   }
+  get panelW() { return this.cfg.render.playerStats ? PANEL_W_STATS : PANEL_W; }
   get inset() { return this.stage !== 'overlay'; }
   /** run draw(ctx) in video pixel coordinates (rings, tags, shuttle live in the video) */
   inVideo(ctx, draw) {
@@ -136,12 +142,13 @@ export class HudRenderer {
     this.inVideo(ctx, g => {
       if (r.showIds && st.dets) this.debugIds(g, st.dets);
       for (const p of shown) this.ring(g, p, st.t);
+      if (r.skeleton) for (const p of shown) if (p.kps) this.skeleton(g, p);
       if (st.shuttle && r.shuttle) this.shuttle(g, st.shuttle, r.badge?.mode === 'hit');
       if (r.tags !== false) for (const p of [...shown].sort((a, b) => a.head[1] - b.head[1])) this.tag(g, p, st.stats);
     });
     if (r.topHud) this.topHud(ctx, st.shuttle, st.preview);
     if (r.playerPanel) this.playerPanel(ctx, st.players, st.stats);
-    if (r.courtMap) this.courtMap(ctx, shown);
+    if (r.courtMap) this.courtMap(ctx, shown, st.trails);
     if (st.shuttle?.speedLabel && r.shuttle && r.badge?.mode === 'fixed') this.speedBadge(ctx, st.shuttle.speedLabel);
   }
 
@@ -202,7 +209,7 @@ export class HudRenderer {
     const s = this.s * this.scaleOf(name), m = 28 * this.s, W = this.OW, H = this.OH, [vx, vy, vw, vh] = this.video;
     let w, h;
     if (name === 'topHud') { w = nTop * 290 * s + (nTop - 1) * 16 * s; h = 96 * s; }
-    else if (name === 'playerPanel') { w = 480 * s; h = 34 * s + 64 * s * nPlayers; }
+    else if (name === 'playerPanel') { w = this.panelW * s; h = 34 * s + 64 * s * nPlayers; }
     else if (name === 'speedBadge') { w = BADGE_W * s; h = BADGE_H * s; }
     else { const [mw, mh] = this.mapInner(s); w = mw + 44 * s; h = mh + 82 * s; }
     let x, y;
@@ -212,7 +219,7 @@ export class HudRenderer {
       else if (name === 'playerPanel') { x = W - m - w; y = m; }
       else {                                  // centred under the player panel
         const k = this.s * this.scaleOf('playerPanel');
-        x = W - m - (480 * k + w) / 2; y = 2 * m + (34 + 64 * nPlayers) * k;
+        x = W - m - (this.panelW * k + w) / 2; y = 2 * m + (34 + 64 * nPlayers) * k;
       }
     } else if (this.stage === 'portrait') {
       if (name === 'topHud') { x = (W - w) / 2; y = vy - m - h; }
@@ -270,6 +277,23 @@ export class HudRenderer {
       const arc = Array.from({ length: 12 }, (_, i) => { const a = a0 + (i / 11) * (38 * Math.PI) / 180; return [Math.cos(a), Math.sin(a)]; });
       this.path(ctx, this.projCircle(p.pos, this.ringR * 1.22, arc), false);
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- pose keypoints (optional)
+  skeleton(ctx, p) {
+    const s = this.s, k = p.kps, on = j => k[j * 3 + 2] > KP_CONF;
+    ctx.save();
+    ctx.strokeStyle = rgba(p.color, 0.85); ctx.lineWidth = Math.max(3 * s, 1.5); ctx.lineCap = 'round';
+    for (const [a, b] of BONES) {
+      if (!on(a) || !on(b)) continue;
+      ctx.beginPath(); ctx.moveTo(k[a * 3], k[a * 3 + 1]); ctx.lineTo(k[b * 3], k[b * 3 + 1]); ctx.stroke();
+    }
+    ctx.fillStyle = '#fff';
+    for (let j = 5; j < 17; j++) {
+      if (!on(j)) continue;
+      ctx.beginPath(); ctx.arc(k[j * 3], k[j * 3 + 1], Math.max(3.5 * s, 2), 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
   }
@@ -368,9 +392,11 @@ export class HudRenderer {
   // ---------------------------------------------------------------- bottom-left player panel
   playerPanel(ctx, players, stats) {
     const s = this.s * this.scaleOf('playerPanel'), n = players.length;
-    const headH = 34 * s, rowH = 64 * s;
+    const headH = 34 * s, rowH = 64 * s, extra = !!this.cfg.render.playerStats;
     const [x0, y0, w] = this.rect('playerPanel', n);
-    const colMove = x0 + 360 * s, colSta = x0 + w - 18 * s;
+    const colSpd = x0 + 350 * s, colTop = x0 + 430 * s, colRally = x0 + 520 * s;
+    const colMove = x0 + (extra ? 610 : 360) * s, colSta = x0 + w - 18 * s, nameEnd = extra ? colSpd - 60 * s : colMove - 70 * s;
+    const num = v => (v == null ? '--' : v.toFixed(1));
     ctx.save();
     const box = [x0, y0, w, headH + rowH * n];
     this.frame(ctx, ...box);
@@ -382,6 +408,11 @@ export class HudRenderer {
     ctx.fillStyle = this.th.text; ctx.textAlign = 'left'; ctx.fillText('PLAYERS', x0 + 18 * s, y0 + 25 * s);
     ctx.fillStyle = this.th.muted; ctx.textAlign = 'right';
     ctx.fillText('MOVE', colMove, y0 + 25 * s); ctx.fillText('STA', colSta, y0 + 25 * s);
+    if (extra) {
+      ctx.fillText('SPD', colSpd, y0 + 25 * s); ctx.fillText('TOP', colTop, y0 + 25 * s); ctx.fillText('RALLY', colRally, y0 + 25 * s);
+      ctx.font = font(16 * s, FONT_DISPLAY); ctx.textAlign = 'left';
+      ctx.fillText('EST. M/S · M', x0 + 118 * s, y0 + 25 * s);
+    }
     ctx.letterSpacing = '0px';
 
     const sorted = [...players].sort((a, b) => String(a.team).localeCompare(String(b.team)) || a.idx - b.idx);
@@ -405,7 +436,7 @@ export class HudRenderer {
         nx = ax + a + 10 * s;
       }
       ctx.textAlign = 'left'; ctx.font = font(24 * s, FONT_THAI); ctx.fillStyle = this.th.text;
-      ctx.fillText(p.name, nx, ry + 31 * s, colMove - nx - 70 * s);
+      ctx.fillText(p.name, nx, ry + 31 * s, nameEnd - nx);
       // segmented stamina bar
       const segs = 12, sw = 16 * s, sg = 3 * s, bx = x0 + 24 * s, by = ry + 46 * s, lit = Math.round(frac * segs);
       for (let k = 0; k < segs; k++) {
@@ -415,17 +446,26 @@ export class HudRenderer {
       }
       // MOVE + STA
       ctx.textAlign = 'right';
-      ctx.font = font(18 * s, FONT_DISPLAY); ctx.fillStyle = this.th.muted; ctx.fillText('M', colMove, ry + 40 * s);
-      const mw = ctx.measureText('M').width + 5 * s;
-      ctx.font = font(34 * s, FONT_DISPLAY); ctx.fillStyle = this.th.text;
-      ctx.fillText(stats.distance(p.idx).toFixed(1), colMove - mw, ry + 40 * s);
+      if (extra) {                                  // the header says the units here: no room for an M on every number
+        ctx.font = font(34 * s, FONT_DISPLAY); ctx.fillStyle = this.th.text;
+        ctx.fillText(num(stats.speed?.(p.idx)), colSpd, ry + 40 * s);
+        ctx.fillStyle = col; ctx.fillText(num(stats.top?.(p.idx)), colTop, ry + 40 * s);
+        ctx.fillStyle = this.th.text; ctx.fillText(num(stats.rally?.(p.idx)), colRally, ry + 40 * s);
+        ctx.fillText(stats.distance(p.idx).toFixed(1), colMove, ry + 40 * s);
+      } else {
+        ctx.font = font(18 * s, FONT_DISPLAY); ctx.fillStyle = this.th.muted; ctx.fillText('M', colMove, ry + 40 * s);
+        const mw = ctx.measureText('M').width + 5 * s;
+        ctx.font = font(34 * s, FONT_DISPLAY); ctx.fillStyle = this.th.text;
+        ctx.fillText(stats.distance(p.idx).toFixed(1), colMove - mw, ry + 40 * s);
+      }
+      ctx.font = font(34 * s, FONT_DISPLAY);
       ctx.fillStyle = frac < 0.3 ? LOW : col; ctx.fillText(stats.stamina(p.idx).toFixed(0), colSta, ry + 40 * s);
     });
     ctx.restore();
   }
 
   // ---------------------------------------------------------------- bottom-right court map
-  courtMap(ctx, shown) {
+  courtMap(ctx, shown, trails = null) {
     const s = this.s * this.scaleOf('courtMap'), side = this.court.orientation === 'side';
     const [mw, mh] = this.mapInner(s);
     const pad = 22 * s, titleH = 38 * s;
@@ -447,6 +487,21 @@ export class HudRenderer {
     for (const [a, b] of courtLines()) { ctx.beginPath(); ctx.moveTo(...toMap(...a)); ctx.lineTo(...toMap(...b)); ctx.stroke(); }
     ctx.strokeStyle = this.th.accent; ctx.lineWidth = Math.max(2.5 * s, 2);
     ctx.beginPath(); ctx.moveTo(...toMap(-0.3, NET_Y)); ctx.lineTo(...toMap(COURT_W + 0.3, NET_Y)); ctx.stroke();
+    if (trails) {
+      ctx.lineWidth = Math.max(3 * s, 1.5); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (const p of shown) {
+        ctx.strokeStyle = rgba(p.color, 0.65);
+        ctx.beginPath();
+        let on = false;
+        for (const q of trails[p.idx] ?? []) {
+          if (!q) { on = false; continue; }
+          const [mx, my] = toMap(...q);
+          if (on) ctx.lineTo(mx, my); else ctx.moveTo(mx, my);
+          on = true;
+        }
+        ctx.stroke();
+      }
+    }
     for (const p of shown) {
       const [x, y] = toMap(...p.pos), r = 6.5 * s;
       ctx.fillStyle = rgba(p.color, 0.3); ctx.beginPath(); ctx.arc(x, y, r * 2, 0, Math.PI * 2); ctx.fill();

@@ -9,6 +9,8 @@ import { loadFonts, layoutKey } from './hud.js';
 import { buildScore } from './rally.js';
 import { ClipPlayer } from './clip.js';
 import { LayoutEditor } from './layout.js';
+import { renderReport } from './report.js';
+import { initPages } from './pages.js';
 import { t, setLang, getLang, onLangChange, applyI18n } from './i18n.js';
 
 const $ = id => document.getElementById(id);
@@ -266,7 +268,7 @@ $('import').onchange = async e => {
 };
 
 // ------------------------------------------------------------------ render options
-const TOGGLES = ['tags', 'topHud', 'playerPanel', 'courtMap', 'shuttle', 'shuttleMark', 'showIds'];
+const TOGGLES = ['tags', 'topHud', 'playerPanel', 'playerStats', 'courtMap', 'trails', 'skeleton', 'shuttle', 'shuttleMark', 'showIds'];
 function syncControls() {
   for (const k of TOGGLES) $('r-' + k).checked = !!state.cfg.render[k];
   $('model').value = state.cfg.model.file;
@@ -291,7 +293,10 @@ const syncScoreOpts = () => {
   $('team-colors').hidden = state.cfg.render.ringColor !== 'team';
   $('badge-mode').closest('.badge-opts').classList.toggle('off', !state.cfg.render.shuttle);
 };
-for (const k of TOGGLES) $('r-' + k).onchange = e => { state.cfg.render[k] = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
+for (const k of TOGGLES) $('r-' + k).onchange = e => {
+  state.cfg.render[k] = e.target.checked; save(); syncScoreOpts();
+  if (k === 'playerStats' && layoutEd.active) openLayout(); else layoutEd.draw();   // panel width sets the stage's default scales
+};
 $('score-on').onchange = e => { state.cfg.score.enabled = e.target.checked; save(); syncScoreOpts(); layoutEd.draw(); };
 $('btn-layout-reset').onclick = () => {
   state.cfg.render[layoutKey(state.cfg.render.stage)] = { topHud: null, playerPanel: null, courtMap: null };   // this stage only
@@ -512,6 +517,24 @@ function reviewScore({ an, auto, ctx, start, time }) {
   });
 }
 
+// ------------------------------------------------------------------ report (table, heatmap, data downloads)
+const showReport = () => {
+  const res = state.result, canvas = renderReport($('report'), res?.report);
+  $('downloads').querySelectorAll('.from-report').forEach(el => el.remove());
+  if (!res) return;
+  const base = state.vid.file.name.replace(/\.[^.]+$/, '') + '_hud';
+  const link = (text, name, make) => {
+    const a = Object.assign(document.createElement('a'), { href: '#', download: name, className: 'button from-report', textContent: text });
+    a.onclick = () => { URL.revokeObjectURL(a.href); a.href = URL.createObjectURL(make()); };   // runs before the browser follows it
+    $('downloads').appendChild(a);
+  };
+  if (canvas) {
+    const a = Object.assign(document.createElement('a'), { href: canvas.toDataURL('image/png'), download: base + '_heatmap.png', className: 'button from-report', textContent: t('dlHeatmap') });
+    $('downloads').appendChild(a);
+  }
+  link(t('dlFrames'), base + '.frames.jsonl', () => new Blob([res.framesJsonl()], { type: 'application/x-ndjson' }));
+};
+
 // ------------------------------------------------------------------ render
 $('btn-render').onclick = async () => {
   if (state.busy) return;
@@ -538,6 +561,7 @@ $('btn-render').onclick = async () => {
   layoutEd.close();
   state.busy = true; state.abort = new AbortController();
   $('btn-render').disabled = true; $('btn-cancel').disabled = false; $('downloads').innerHTML = '';
+  state.result = null; showReport();
   activate('render');
   const out = $('out');
   $('stage').hidden = true; out.hidden = false;
@@ -576,6 +600,7 @@ $('btn-render').onclick = async () => {
       + (res.highlight ? t('doneHighlight', { n: res.highlight.clips, s: res.highlight.duration_s }) : ''), 'ok');
     setTitle(() => t('title.result'));
     window.__lastResult = state.result = res;
+    showReport();
     toast(t('doneToast'));
   } catch (e) {
     console.error(e);
@@ -595,10 +620,12 @@ onLangChange(() => {
   syncLangButtons();
   for (const [id, { fn }] of live) $(id).textContent = fn();
   renderCards(); stage.draw();
+  if (state.result) showReport();
 });
 
 // ------------------------------------------------------------------ init
 applyI18n(); syncLangButtons();
+initPages(t);
 syncControls();
 renderCards();
 activate('video');

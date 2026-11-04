@@ -8,7 +8,7 @@ import {
 } from 'mediabunny';
 import { ByteTracker } from './bytetrack.js';
 import { PlayerTracker, interpolateBetween, footPoint } from './players.js';
-import { StatsTracker } from './stats.js';
+import { StatsTracker, playerMetrics, trailsAt, positionGrid } from './stats.js';
 import { HudRenderer, speedRank } from './hud.js';
 import { analyzeShuttle, shuttleStateAt, scoreContext, autoWinners, buildScore, pickHighlights, detectServes, ralliesFromServes } from './rally.js';
 import { t } from './i18n.js';
@@ -52,6 +52,9 @@ class StatView {
   distance(i) { return this.s.dist[i] || 0; }
   stamina(i) { return this.s.sta[i]; }
   staminaFrac(i) { return this.s.staFrac[i]; }
+  speed(i) { return this.s.spd?.[i] ?? null; }
+  top(i) { return this.s.top?.[i] ?? null; }
+  rally(i) { return this.s.rallyM?.[i] ?? null; }
 }
 
 /**
@@ -126,7 +129,8 @@ export async function renderVideo(opts) {
       t,
       players: ps.map(p => ({
         idx: p.idx, name: p.name, color: p.color, team: p.team, trackId: p.trackId,
-        pos: p.pos && [...p.pos], head: p.head && [...p.head], show: tracker.drawable(p, t),
+        pos: p.pos && [...p.pos], head: p.head && [...p.head], show: tracker.drawable(p, t), seen: p.visible,
+        kps: cfg.render.skeleton && p.visible ? p.kps : null,
       })),
       dist: ps.map(p => stats.distance(p.idx)),
       sta: ps.map(p => stats.stamina(p.idx)),
@@ -157,6 +161,7 @@ export async function renderVideo(opts) {
   // rallies from serve to serve (players' positions vs the service lines) when serves were found; else hit chains
   const serves = an ? detectServes(boxes, { fps }) : [];
   if (serves.length >= 2) an.rallies = ralliesFromServes(an, serves, boxes, fps);
+  const metrics = snaps.length ? playerMetrics(snaps, an?.rallies, fps, cfg.tracking.maxSpeed) : null;
 
   // ---------------------------------------------------------- score: auto guess, then optional user review
   let score = null;
@@ -228,7 +233,11 @@ export async function renderVideo(opts) {
     }
   };
 
-  let m = 0;
+  let m = 0, lastTs = null;
+  const stateAt = (i, snap) => ({
+    ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, i, fps, hudOut.badgeSecs) : null,
+    trails: cfg.render.trails ? trailsAt(snaps, i, fps) : null,
+  });
   try {
     const sink2 = new CanvasSink(vid.video, { poolSize: 2 });
     for await (const wc of sink2.canvases(start, end)) {
@@ -236,7 +245,8 @@ export async function renderVideo(opts) {
       if (m >= snaps.length) break;
       const snap = snaps[m];
       hudOut.drawBase(ctx, wc.canvas);
-      hudOut.render(ctx, { ...snap, stats: new StatView(snap), shuttle: an ? shuttleStateAt(an, m, fps, hudOut.badgeSecs) : null });
+      hudOut.render(ctx, stateAt(m, snap));
+      lastTs = wc.timestamp;
       await pumpAudio(wc.timestamp + 0.5);
       await vSrc.add(snap.t, wc.duration || 1 / fps);
       const sp = hl?.spans.find(c => m >= c.start && m <= c.end);
@@ -256,13 +266,36 @@ export async function renderVideo(opts) {
   await pumpAudio(end);
   await output.finalize();
   await hl?.out.finalize();
+  // the highlight's fade-out is drawn on this canvas: without a redraw a clip ending on the last frame leaves it black
+  if (hl && lastTs !== null) {
+    const last = await grabFrame(vid, lastTs);
+    if (last) { hudOut.drawBase(ctx, last); hudOut.render(ctx, stateAt(m - 1, snaps[m - 1])); }
+  }
 
   const names = cfg.players.map(p => p.name);
+  const round2 = v => +v.toFixed(2);
+  const playersJson = stats.toJSON(tracker.players);
+  metrics?.players.forEach((s, i) => {
+    Object.assign(playersJson[names[i]] ?? {}, { avg_speed_ms_est: round2(s.avg), max_speed_ms_est: round2(s.top), tracked_pct: Math.round(s.seen * 100) });
+  });
   const result = {
     codec, frames: m,
+    report: metrics && {
+      rallies: metrics.spans.length,
+      players: cfg.players.map((p, i) => ({
+        name: p.name, color: p.color, team: p.team, ...metrics.players[i],
+        heat: positionGrid(snaps, i, metrics.spans),
+      })),
+    },
+    // one JSON line per frame (built on demand: an hour of video is tens of MB)
+    framesJsonl: () => snaps.map((s, f) => JSON.stringify({
+      frame: f, t: round2(s.t),
+      players: s.players.map((p, i) => ({ name: p.name, seen: p.seen, court: p.pos?.map(round2) ?? null, speed_ms_est: s.spd?.[i] != null ? round2(s.spd[i]) : null })),
+      shuttle: an?.pos[f]?.map(Math.round) ?? null,
+    })).join('\n') + '\n',
     stats: {
       video: vid.file.name, fps, frames: m, start_s: +start.toFixed(2), duration_s: +(m / fps).toFixed(2),
-      players: stats.toJSON(tracker.players),
+      players: playersJson,
       track_bindings: tracker.bindings(),
       detector_backend: detector.backend,
       shuttle: an ? {
@@ -272,6 +305,7 @@ export async function renderVideo(opts) {
         rallies: an.rallies.map((r, i) => ({
           rally: i + 1, start_s: +(snaps[r.start].t).toFixed(2), duration_s: +((r.end - r.start) / fps).toFixed(2), shots: r.hits.length,
           max_speed_kmh_est: Math.max(0, ...r.hits.map(h => h.speed || 0)) || null,
+          players: Object.fromEntries((metrics?.perRally[i] ?? []).map((s, k) => [names[k], { distance_m: round2(s.distance), max_speed_ms_est: round2(s.top) }])),
         })),
         shots: an.hits.map(h => ({ t_s: +(snaps[h.frame].t).toFixed(2), player: h.player != null ? names[h.player] : null, speed_kmh_est: h.speed, rank_est: h.speed != null ? speedRank(h.speed, cfg.render.badge.ranks).rank : null })),
       } : null,

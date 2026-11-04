@@ -27,6 +27,8 @@ Open in Chrome/Edge (needs WebGPU + WebCodecs; Safari not supported). `file://` 
 ```
 index.html        UI shell + importmap (CDN libs pinned: onnxruntime-web@1.30.0, mediabunny@1.60.0)
 css/style.css     Dark navy UI; design tokens in :root; Kanit (UI/Thai) + Bebas Neue (numbers)
+js/pages.js       Hash routes on one page: #/ home, #/app the wizard, #/privacy; `data-view` sections, "delete my data" button (localStorage bhud.*)
+js/report.js      After a render: per-player table + court-position heatmaps (step 4), from `result.report`
 js/i18n.js        UI strings TH/EN: t(key, vars), data-i18n / data-i18n-title / data-i18n-aria, lang in localStorage bhud.lang
 js/app.js         UI controller: wizard 1 วิดีโอ → 2 สนาม → 3 ผู้เล่น (cards) → 4 สร้างวิดีโอ — one step visible, stepper +
                   back/next (`go()`: next only when `missing(step)` is null: video, court, ≥ 1 player); model loading; progress
@@ -36,7 +38,8 @@ js/court.js       Court model (13.4 × 6.1 m, net y=6.7), 4-point homography ima
 js/detector.js    YOLO11-pose ONNX 640×640 (letterbox, NMS, 17 keypoints) + zoomed far-court tiles. WebGPU → WASM fallback
 js/bytetrack.js   ByteTrack port (Kalman xyah, two-stage association, greedy matching)
 js/players.js     Track → named player: known IDs, then court distance + shirt-colour histogram; hard court-side rule; EMA smoothing
-js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina
+js/stats.js       Distance moved (dead-band + teleport filter), gamified stamina. Pure, after pass 1: `playerMetrics` (speed over a
+                  centred 0.5 s window, peak, distance per rally; above `tracking.maxSpeed` = tracker jump, dropped not capped), `trailsAt`, `positionGrid`
 js/shuttle.js     TrackNetV3 ONNX: median background + 8 RGB frames @512×288 → 8 heatmaps → every blob (≤ 5, `cands`);
                   WasbTracker (assist): WASB 3 frames ImageNet-normalised → 3 heatmaps → heat-weighted blobs + 300 px gate
 js/rally.js       PURE (no browser APIs, testable in node): trajectory cleanup, gap fill, hits, hitter, speed, rallies, scoring; shuttleStateAt()
@@ -180,6 +183,13 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 - **The server's toss is not a shot** (user clip, count 2 before the serve): a flight first seen falling, with a turn ≤ 0.6 s later
   within 150 px (at 1280), is dropped and the turn is the hit (`arrived`, analyzeShuttle 3). The wrong first shot also
   flipped the side order and caused a false `inferred` shot. Two hits missed in a row (both sides) stay uncounted.
+- **Good-Badminton comparison** (github.com/yo-WASSUP/Good-Badminton, Apache-2.0; ideas taken, no code copied): its demos are BWF
+  broadcast singles from a high centred camera. Its `demo1.mp4` in this app: both players tracked ≥ 99.8 %, shuttle in 925 of 1038 frames;
+  at 18 s MOVE 32.2 / 31.6 m and TOP 4.8 / 4.5 m/s vs its screenshot's 33.26 / 34.43 m and 4.33 / 4.59 m/s (the two agree; neither is
+  ground truth). So on that footage the player values match: a gap on our own clips would come from the footage (oblique camera, doubles,
+  neighbouring courts) — no evidence yet for a pose-model swap; not compared on our clips. Its rally counter is template matching for broadcast cuts and its hit analysis is disabled: nothing to take there.
+- **Privacy notice = a promise:** adding a network call, storing something new or changing a third party means updating
+  `privacy.*` in i18n.js (both languages) and its date. Umami (index.html) is the one analytics call; never send anything from a video.
 - **Frame indices must be integers:** `vid.fps` is `averagePacketRate` (29.97…), so `n * fps` needs `Math.round` before it
   indexes anything — `snaps[276.82]` → "Cannot read properties of undefined (reading 't')" right after pass 1 (user report).
 - Thai text: draw with canvas `fillText` using the "HUD Thai" (Kanit) font only; Bebas has no Thai glyphs. Wait for `loadFonts()` before rendering.
@@ -188,7 +198,7 @@ HudRenderer only reads snapshots (`{t, players, stats, shuttle, dets, preview}`)
 
 ## Conventions
 - Vanilla ES modules, no framework, no bundler. Keep files small and single-purpose; prefer extending existing modules.
-- Pin CDN versions in the importmap (exact versions ≥ 2 weeks old). No other runtime network calls besides models/fonts in this folder.
+- Pin CDN versions in the importmap (exact versions ≥ 2 weeks old). No other runtime network calls besides models/fonts in this folder and the Umami page-view script.
 - Config changes: add defaults to `DEFAULT_CONFIG` (deep-merged with saved config). Bump the localStorage key only for breaking shape changes.
 - UI copy: add keys to both `th` and `en` in i18n.js (no literal UI strings in other files), concise; status lines via `setStatus(id, text, 'ok'|'warn'|'err')`, transient messages via `toast()`.
 - `rally.js` must stay pure so it can be tested in node with recorded positions.

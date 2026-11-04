@@ -22,7 +22,12 @@
     <button class="ghost" id="browser-warn-x" data-i18n-title="close">✕</button>
   </div>
   <header class="topbar">
-    <div class="brand"><span class="mark"></span>BADMINTON <b>HUD</b></div>
+    <a class="brand" href="#/"><span class="mark"></span>BADMINTON <b>HUD</b></a>
+    <nav class="topnav" aria-label="Main">
+      <a href="#/" data-nav="home" data-i18n="menu.home"></a>
+      <a href="#/app" data-nav="app" data-i18n="menu.app"></a>
+      <a href="#/privacy" data-nav="privacy" data-i18n="menu.privacy"></a>
+    </nav>
     <div class="sub" data-i18n="sub"></div>
     <div class="badges">
       <span id="badge-gpu" class="badge" data-i18n="badge.checking"></span>
@@ -30,7 +35,138 @@
     </div>
   </header>
 
-  <main class="layout">
+  <main class="page" data-view="home" hidden>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow" data-i18n="home.eyebrow"></p>
+        <h1 data-i18n="home.title"></h1>
+        <p class="lead" data-i18n="home.lead"></p>
+        <div class="cta">
+          <a class="button primary" href="#/app" data-i18n="home.start"></a>
+          <a class="button" href="#/privacy" data-i18n="home.readPrivacy"></a>
+        </div>
+        <p class="hint" data-i18n="home.needs"></p>
+      </div>
+      <!-- a drawn illustration of the HUD, not a measurement: no footage ships with the app -->
+      <svg class="hero-art" viewBox="0 0 480 400" role="img" data-i18n-aria="home.art">
+        <rect x="0" y="0" width="480" height="400" rx="12" fill="#081329"/>
+        <polygon points="150,70 330,70 400,320 80,320" fill="#12564c"/>
+        <g fill="none" stroke="#e8f0ff" stroke-opacity=".75" stroke-width="1.5">
+          <polygon points="150,70 330,70 400,320 80,320"/>
+          <path d="M163,70 91,320 M317,70 389,320 M240,70V170 M240,220V320 M143,95H337 M126,170H354 M104,220 H376 M88,292H392"/>
+        </g>
+        <path d="M112,195H368" stroke="#00e5ff" stroke-width="3"/>
+        <path d="M192,250 C215,276 250,250 275,284" fill="none" stroke="#ff3d7f" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>
+        <path d="M205,92 C225,120 262,105 272,134" fill="none" stroke="#00e5ff" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="272" cy="136" rx="20" ry="8" fill="#00e5ff" fill-opacity=".2" stroke="#00e5ff" stroke-width="2"/>
+        <ellipse cx="275" cy="286" rx="30" ry="12" fill="#ff3d7f" fill-opacity=".2" stroke="#ff3d7f" stroke-width="2"/>
+        <path d="M322,110 Q280,20 170,150" fill="none" stroke="#fff" stroke-opacity=".35" stroke-dasharray="4 7" stroke-width="2"/>
+        <circle cx="322" cy="110" r="8" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="2"/>
+        <g font-family="Bebas, sans-serif" fill="#e8f0ff">
+          <rect x="16" y="14" width="136" height="52" rx="4" fill="#060c18" fill-opacity=".9" stroke="#1f3260"/>
+          <text x="84" y="31" font-size="12" text-anchor="middle" fill="#9fb4d0" letter-spacing="1">RALLY COUNT</text>
+          <text x="84" y="57" font-size="24" text-anchor="middle">12 <tspan font-size="12" fill="#00e5ff">SHOT</tspan></text>
+          <rect x="328" y="14" width="136" height="52" rx="4" fill="#060c18" fill-opacity=".9" stroke="#1f3260"/>
+          <text x="396" y="31" font-size="12" text-anchor="middle" fill="#9fb4d0" letter-spacing="1">SHOT SPEED (EST.)</text>
+          <text x="396" y="57" font-size="24" text-anchor="middle">131 <tspan font-size="12" fill="#00e5ff">KM/H</tspan></text>
+          <rect x="16" y="336" width="448" height="50" rx="4" fill="#060c18" fill-opacity=".9" stroke="#1f3260"/>
+          <text x="30" y="355" font-size="12" fill="#9fb4d0" letter-spacing="1">PLAYER 1 · SPD · TOP · RALLY · MOVE</text>
+          <text x="30" y="377" font-size="18"><tspan fill="#00e5ff">3.1</tspan> M/S   ·   4.7   ·   12.4 M   ·   32.2 M</text>
+        </g>
+      </svg>
+    </section>
+
+    <section class="band">
+      <h2 data-i18n="home.how"></h2>
+      <ol class="how">
+        <li><b data-i18n="home.how1"></b><span data-i18n="home.how1d"></span></li>
+        <li><b data-i18n="home.how2"></b><span data-i18n="home.how2d"></span></li>
+        <li><b data-i18n="home.how3"></b><span data-i18n="home.how3d"></span></li>
+        <li><b data-i18n="home.how4"></b><span data-i18n="home.how4d"></span></li>
+      </ol>
+    </section>
+
+    <section class="band">
+      <h2 data-i18n="home.get"></h2>
+      <div class="grid3">
+        <div><h3 data-i18n="home.f1"></h3><p data-i18n="home.f1d"></p></div>
+        <div><h3 data-i18n="home.f2"></h3><p data-i18n="home.f2d"></p></div>
+        <div><h3 data-i18n="home.f3"></h3><p data-i18n="home.f3d"></p></div>
+        <div><h3 data-i18n="home.f4"></h3><p data-i18n="home.f4d"></p></div>
+        <div><h3 data-i18n="home.f5"></h3><p data-i18n="home.f5d"></p></div>
+        <div><h3 data-i18n="home.f6"></h3><p data-i18n="home.f6d"></p></div>
+      </div>
+    </section>
+
+    <section class="band split">
+      <div class="callout">
+        <h2 data-i18n="home.privacy"></h2>
+        <p data-i18n="home.privacyd"></p>
+        <a href="#/privacy" data-i18n="home.readPrivacy"></a>
+      </div>
+      <div>
+        <h2 data-i18n="home.limits"></h2>
+        <ul class="plain">
+          <li data-i18n="home.l1"></li>
+          <li data-i18n="home.l2"></li>
+          <li data-i18n="home.l3"></li>
+          <li data-i18n="home.l4"></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <main class="page prose" data-view="privacy" hidden>
+    <h1 data-i18n="privacy.title"></h1>
+    <p class="hint" data-i18n="privacy.updated"></p>
+    <p class="callout" data-i18n="privacy.summary"></p>
+
+    <h2 data-i18n="privacy.video"></h2>
+    <p data-i18n="privacy.videod"></p>
+
+    <h2 data-i18n="privacy.browser"></h2>
+    <p data-i18n="privacy.browserd"></p>
+    <ul class="plain">
+      <li data-i18n="privacy.b1"></li>
+      <li data-i18n="privacy.b2"></li>
+      <li data-i18n="privacy.b3"></li>
+    </ul>
+    <p data-i18n="privacy.browserEnd"></p>
+    <p><button class="ghost danger" id="btn-clear-data" data-i18n="privacy.clear"></button></p>
+
+    <h2 data-i18n="privacy.third"></h2>
+    <p data-i18n="privacy.thirdd"></p>
+    <div class="table-wrap">
+      <table>
+        <tr><th data-i18n="privacy.t.service"></th><th data-i18n="privacy.t.why"></th><th data-i18n="privacy.t.data"></th></tr>
+        <tr><td>Umami Cloud</td><td data-i18n="privacy.umami.why"></td><td data-i18n="privacy.umami.data"></td></tr>
+        <tr><td>jsDelivr</td><td data-i18n="privacy.cdn.why"></td><td data-i18n="privacy.net.data"></td></tr>
+        <tr><td>GitHub Pages</td><td data-i18n="privacy.host.why"></td><td data-i18n="privacy.net.data"></td></tr>
+      </table>
+    </div>
+    <p data-i18n="privacy.noAccount"></p>
+
+    <h2 data-i18n="privacy.people"></h2>
+    <p data-i18n="privacy.peopled"></p>
+
+    <h2 data-i18n="privacy.changes"></h2>
+    <p data-i18n="privacy.changesd"></p>
+
+    <h2 data-i18n="privacy.contact"></h2>
+    <p data-i18n="privacy.contactd"></p>
+
+    <h2 data-i18n="privacy.credits"></h2>
+    <ul class="plain">
+      <li>YOLO11-pose — Ultralytics (AGPL-3.0)</li>
+      <li>TrackNetV3 — qaz812345/TrackNetV3 (MIT)</li>
+      <li>WASB — nttcom/WASB-SBDT (MIT)</li>
+      <li>onnxruntime-web (MIT) · Mediabunny (MPL-2.0)</li>
+      <li>Kanit · Bebas Neue (SIL OFL)</li>
+    </ul>
+    <p data-i18n="privacy.creditsd"></p>
+  </main>
+
+  <main class="layout" data-view="app" hidden>
     <aside class="panel">
       <nav class="stepper" id="stepper">
         <button data-go="video"><i>1</i><span data-i18n="step.video"></span></button>
@@ -127,7 +263,10 @@
           <label><input type="checkbox" id="r-tags"> <span data-i18n="opt.tags"></span></label>
           <label><input type="checkbox" id="r-topHud"> <span data-i18n="opt.topHud"></span></label>
           <label><input type="checkbox" id="r-playerPanel"> <span data-i18n="opt.playerPanel"></span></label>
+          <label><input type="checkbox" id="r-playerStats"> <span data-i18n="opt.playerStats"></span></label>
           <label><input type="checkbox" id="r-courtMap"> <span data-i18n="opt.courtMap"></span></label>
+          <label><input type="checkbox" id="r-trails"> <span data-i18n="opt.trails"></span></label>
+          <label><input type="checkbox" id="r-skeleton"> <span data-i18n="opt.skeleton"></span></label>
           <label><input type="checkbox" id="r-shuttle"> <span data-i18n="opt.shuttle"></span></label>
           <label data-i18n-title="opt.assist.tip"><input type="checkbox" id="m-assist"> <span data-i18n="opt.assist"></span></label>
           <label><input type="checkbox" id="r-showIds"> <span data-i18n="opt.showIds"></span></label>
@@ -244,6 +383,7 @@
           <button class="primary" id="btn-review-ok" data-i18n="rv.ok"></button>
         </div>
         <div id="downloads" class="row"></div>
+        <div id="report" class="report" hidden></div>
         <div class="step-nav">
           <button class="ghost" data-go="players" data-i18n="nav.back"></button>
         </div>
@@ -264,6 +404,11 @@
       </div>
     </section>
   </main>
+  <footer class="site-foot">
+    <span data-i18n="foot.local"></span>
+    <a href="#/privacy" data-i18n="menu.privacy"></a>
+    <a href="https://github.com/gob123th/Badminton-Generate-HUD" rel="noopener" target="_blank">GitHub</a>
+  </footer>
   <div id="toast" class="toast" hidden></div>
 </body>
 </html>
